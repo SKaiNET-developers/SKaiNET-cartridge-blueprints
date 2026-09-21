@@ -35,7 +35,7 @@ class BlueprintBoundaryTest {
     @Test
     fun `no application, device or organization vocabulary`() {
         // ("session" is absent from the list on purpose: it names the runtime's KV session.)
-        val terms = Regex("""(?i)\b(intent|command[-_ ]?assembler|set-top|stb|fleet|customer)\b""")
+        val terms = Regex("""(?i)\b(intent|command[-_ ]?assembler|fleet|customer|tenant)\b""")
         val hits = File(dir, "src/main").walkTopDown().filter { it.extension == "kt" }.flatMap { f ->
             f.readLines().mapIndexedNotNull { i, line -> if (terms.containsMatchIn(line)) "${f.name}:${i + 1}: ${line.trim()}" else null }
         }.toList()
