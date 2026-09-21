@@ -1,0 +1,11 @@
+{
+  "spec_version": "0.4",
+  "kind": "materialization-profile",
+  "blueprint": { "id": "nlu-functiongemma-270m-iree", "version": "0.1.0" },
+  "target": "vulkan-armv7",
+  "cartridge": { "version": "0.1.0" },
+  "inputs": {
+    "tool-catalog": { "path": "../samples/toy-catalog.json", "license": "MIT" }
+  },
+  "signing": { "keyid": "my-dev-key", "signer": "<you>", "key_ref": "CARTRIDGE_SIGNING_KEY" }
+}

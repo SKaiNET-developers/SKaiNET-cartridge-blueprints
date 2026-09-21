@@ -1,0 +1,417 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "nlu-functiongemma-270m-iree",
+  "version": "0.1.0",
+  "description": "Function-calling NLU: FunctionGemma 270M, exported by SKaiNET-transformers to StableHLO under the KV-cache contract (prefill-at + prefill-with-past + with-past, host-gathered embeddings), compiled with IREE for Vulkan or CPU. The tool catalog is an input: the functions a model may call belong to the host.",
+  "license": "MIT",
+  "descriptor_template": {
+    "family": "functiongemma-270m-tool-calling",
+    "execution_mode": "native",
+    "model": {
+      "name": "functiongemma-270m-it",
+      "variant": "iree-bf16-kv-chunk32",
+      "params": 268000000,
+      "checkpoint": "google/functiongemma-270m-it",
+      "upstream": {
+        "source": "https://huggingface.co/unsloth/functiongemma-270m-it-GGUF",
+        "license": "Gemma Terms of Use (https://ai.google.dev/gemma/terms) — not an OSI license; whoever ships a cartridge built from these weights accepts the terms and the prohibited-use policy."
+      }
+    },
+    "modality": "text",
+    "task": "nlu",
+    "io": {
+      "mode": "batch",
+      "input": {
+        "dtype": "utf8-text",
+        "shape": [
+          null
+        ]
+      },
+      "output": {
+        "dtype": "utf8-json",
+        "shape": [
+          null
+        ],
+        "output_schema": {
+          "type": "object",
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "attributes": {
+      "supports_tool_calling": true,
+      "tool_call_format": "functiongemma-compact-v1",
+      "thinking": false,
+      "context_window_tokens": 1024,
+      "weights": "bf16 parameter archives (3 x 536 MB), f32 compute; dequantized from the Q8_0 GGUF at export",
+      "runtime_hint": {
+        "runtime": "iree",
+        "version": "3.11.0",
+        "contract": "functiongemma-kv-v1 (prefill_at + prefill_with_past + with_past, host-gathered embeddings)",
+        "chunk": 32,
+        "sliding_window": 512,
+        "library": "libskainet_iree_kv.so"
+      }
+    },
+    "requirements": {
+      "memory_mb": 2048,
+      "os": {
+        "name": "android",
+        "min_api": 29
+      }
+    }
+  },
+  "sources": [
+    {
+      "name": "weights",
+      "role": "weights",
+      "uri": "hf://unsloth/functiongemma-270m-it-GGUF",
+      "revision": "1de0f7fc7cae0062012c2e91ef02e642c161aa57",
+      "files": [
+        {
+          "path": "functiongemma-270m-it-Q8_0.gguf",
+          "digest": "sha256:8a17a4eda2b28eaf685a487129fd5295eeff3f722b9c6451dd3d98c18c23a98d",
+          "size": 291558624
+        }
+      ],
+      "license": "Gemma Terms of Use",
+      "license_url": "https://ai.google.dev/gemma/terms",
+      "redistribution": "acceptance-required"
+    }
+  ],
+  "toolchain": {
+    "skainet": {
+      "version": "0.56.0",
+      "coordinates": "sk.ainet:skainet-bom"
+    },
+    "skainet-transformers": {
+      "version": "0.56.0",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-inference-functiongemma",
+      "description": "FunctionGemmaExportCli: GGUF -> StableHLO modules + external parameters (Kotlin)"
+    },
+    "iree-tools": {
+      "version": "3.11.0",
+      "image": "skainet/iree-compiler:3.11.0",
+      "description": "IREE tools (StableHLO -> IREE): iree-compile, iree-convert-parameters"
+    },
+    "iree-android-runtime": {
+      "version": "0.56.0",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-runtime-iree-android",
+      "description": "libskainet_iree_kv.so, built and published by SKaiNET-transformers from llm-runtime/iree-android/native"
+    },
+    "blueprint-plugin": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.blueprint"
+    }
+  },
+  "targets": [
+    {
+      "id": "vulkan-armv7",
+      "target": {
+        "hardware": "IREE-armeabi-v7a",
+        "abi": "armeabi-v7a",
+        "accelerator": "Vulkan GPU (valhall4)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 2048,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "vulkan",
+        "iree_target": "valhall4",
+        "suffix": "valhall4",
+        "device": "vulkan"
+      }
+    },
+    {
+      "id": "cpu-armv7",
+      "target": {
+        "hardware": "IREE-armeabi-v7a",
+        "abi": "armeabi-v7a"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 2048,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "arm32",
+        "suffix": "arm32",
+        "device": "local-task"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "name": "tool-catalog",
+      "role": "other",
+      "required": true,
+      "schema": "schema/tool-catalog.schema.json",
+      "description": "The functions the model may call, with their argument schemas. Host- or organization-specific by nature; this repository ships only a toy catalog for trying things out (samples/toy-catalog.json)."
+    }
+  ],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "weights"
+      ],
+      "produces": [
+        "weights-gguf"
+      ],
+      "description": "SKaiNET data-source: hf:// at the pinned revision, SHA-256 verified."
+    },
+    {
+      "id": "export",
+      "kind": "export",
+      "tool": "skainet-transformers",
+      "uses": [
+        "weights-gguf"
+      ],
+      "produces": [
+        "with-past-mlir",
+        "prefill-with-past-mlir",
+        "prefill-at-mlir",
+        "with-past-safetensors",
+        "prefill-with-past-safetensors",
+        "prefill-at-safetensors"
+      ],
+      "description": "Kotlin: trace the three KV-contract graphs to StableHLO; weights stay external, dequantized Q8_0 -> bf16.",
+      "params": {
+        "graphs": {
+          "with-past": {
+            "GEMMA_GRAPH": "with_past"
+          },
+          "prefill-with-past": {
+            "GEMMA_GRAPH": "prefill_with_past",
+            "GEMMA_CHUNK": "32"
+          },
+          "prefill-at": {
+            "GEMMA_GRAPH": "prefill_at",
+            "GEN_SEQ": "1024"
+          }
+        }
+      }
+    },
+    {
+      "id": "host-gather",
+      "kind": "convert",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "with-past-mlir",
+        "prefill-with-past-mlir",
+        "prefill-at-mlir"
+      ],
+      "produces": [
+        "with-past-hostgather-mlir",
+        "prefill-with-past-hostgather-mlir",
+        "prefill-at-hostgather-mlir"
+      ],
+      "description": "Replace the token-embedding gather with an %emb argument; the runtime reads embedding rows from the archive. Numerics unchanged."
+    },
+    {
+      "id": "parameters",
+      "kind": "convert",
+      "tool": "iree-tools",
+      "uses": [
+        "with-past-safetensors",
+        "prefill-with-past-safetensors",
+        "prefill-at-safetensors"
+      ],
+      "produces": [
+        "with-past-irpa",
+        "prefill-with-past-irpa",
+        "prefill-at-irpa"
+      ],
+      "description": "iree-convert-parameters: safetensors -> .irpa, scope `model`. Format change only."
+    },
+    {
+      "id": "compile",
+      "kind": "compile",
+      "tool": "iree-tools",
+      "uses": [
+        "with-past-hostgather-mlir",
+        "prefill-with-past-hostgather-mlir",
+        "prefill-at-hostgather-mlir"
+      ],
+      "produces": [
+        "with-past-vmfb",
+        "prefill-with-past-vmfb",
+        "prefill-at-vmfb"
+      ],
+      "per_target": true,
+      "description": "iree-compile for the target's backend: vulkan-spirv (--iree-vulkan-target) or llvm-cpu."
+    },
+    {
+      "id": "runtime",
+      "kind": "build-runtime",
+      "tool": "iree-android-runtime",
+      "produces": [
+        "runtime-so"
+      ],
+      "per_target": true,
+      "description": "The KV-session JNI library for the target ABI, taken from the published SKaiNET-transformers Android runtime (its source: llm-runtime/iree-android/native)."
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "with-past-vmfb",
+        "prefill-with-past-vmfb",
+        "prefill-at-vmfb",
+        "with-past-irpa",
+        "prefill-with-past-irpa",
+        "prefill-at-irpa",
+        "runtime-so",
+        "weights-gguf",
+        "tool-catalog"
+      ],
+      "produces": [
+        "pack-dir"
+      ]
+    },
+    {
+      "id": "sign",
+      "kind": "sign",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "pack-dir"
+      ],
+      "produces": [
+        "manifest"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "from": "runtime-so",
+      "role": "runtime",
+      "path": "artifacts/runtime/libskainet_iree_kv.so",
+      "derived_from": []
+    },
+    {
+      "from": "with-past-vmfb",
+      "role": "model",
+      "path": "artifacts/model/gemma-with-past.vmfb",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "prefill-with-past-vmfb",
+      "role": "model",
+      "path": "artifacts/model/gemma-prefill-with-past.vmfb",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "prefill-at-vmfb",
+      "role": "model",
+      "path": "artifacts/model/gemma-prefill-at.vmfb",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "with-past-irpa",
+      "role": "weights",
+      "path": "artifacts/weights/gemma-with-past.irpa",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "prefill-with-past-irpa",
+      "role": "weights",
+      "path": "artifacts/weights/gemma-prefill-with-past.irpa",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "prefill-at-irpa",
+      "role": "weights",
+      "path": "artifacts/weights/gemma-prefill-at.irpa",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "weights-gguf",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/functiongemma-270m-it-Q8_0.gguf",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "tool-catalog",
+      "role": "other",
+      "path": "artifacts/other/tool-catalog.json",
+      "derived_from": [
+        "tool-catalog"
+      ]
+    }
+  ],
+  "verification": [
+    {
+      "id": "host-gather-shape",
+      "kind": "parity",
+      "description": "Each rewritten module takes %emb with exactly the type the removed gather produced; numerics are unchanged by construction.",
+      "tolerance": 0
+    },
+    {
+      "id": "toy-catalog-calls",
+      "kind": "golden",
+      "description": "With samples/toy-catalog.json: the fixed utterances in samples/toy-golden.json parse to the expected function names on the target.",
+      "on_device": true
+    }
+  ],
+  "reference_measurements": [
+    {
+      "target": "vulkan-armv7",
+      "measured_on": "arm32 Android 14 device, 4x ARMv8 CPU, Mali GPU via Vulkan, IREE 3.11.0, 2026-09-04",
+      "performance": {
+        "latency_p50_ms": 5390,
+        "latency_p95_ms": 6979
+      },
+      "notes": "15-function catalog (843-token prefix, prefilled once, excluded); per utterance = tokenize + snapshot restore + one 32-token chunk call (~1.9 s) + greedy decode to <end_function_call> (10-18 tokens at ~0.25 s). Warm-up ~62 s, RSS ~1.5 GB."
+    },
+    {
+      "target": "cpu-armv7",
+      "measured_on": "same device, llvm-cpu arm32 local-task, 2026-09-04",
+      "performance": {
+        "latency_p50_ms": 19700,
+        "latency_p95_ms": 21000
+      },
+      "notes": "Projected from standalone per-graph measurements (chunk call ~5.1 s, ~0.85 s per decode token); warm-up ~77 s."
+    }
+  ]
+}

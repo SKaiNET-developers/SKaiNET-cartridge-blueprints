@@ -1,0 +1,22 @@
+{
+  "id": "toy-tools.v1",
+  "languages": ["en"],
+  "functions": [
+    {
+      "name": "set_timer",
+      "description": "Start a countdown timer for a number of minutes.",
+      "parameters": { "minutes": { "type": "integer", "description": "How many minutes the timer runs." } },
+      "required": ["minutes"]
+    },
+    {
+      "name": "toggle_lamp",
+      "description": "Switch the desk lamp on or off.",
+      "parameters": { "state": { "type": "string", "description": "The new state of the lamp.", "enum": ["on", "off"] } },
+      "required": ["state"]
+    },
+    {
+      "name": "roll_dice",
+      "description": "Roll one six-sided die and say the result."
+    }
+  ]
+}

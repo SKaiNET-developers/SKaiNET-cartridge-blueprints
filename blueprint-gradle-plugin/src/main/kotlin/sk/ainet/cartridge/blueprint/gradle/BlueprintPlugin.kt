@@ -58,8 +58,44 @@ abstract class BlueprintExtension {
     /** Parent of the produced `pack_dir`. Default: `build/cartridge`. */
     abstract val outputDir: DirectoryProperty
 
+    /**
+     * Where `blueprintFetch` exposes each verified source file under a stable path,
+     * `<dir>/<source name>/<file path>` — a link into the shared cache. Default: `build/blueprint/sources`.
+     */
+    abstract val sourceLinksDir: DirectoryProperty
+
     internal abstract val productPaths: MapProperty<String, String>
     internal abstract val productFiles: ConfigurableFileCollection
+    internal lateinit var fetchTask: org.gradle.api.tasks.TaskProvider<BlueprintFetchTask>
+
+    /**
+     * The target the profile selected, with the blueprint's `params` for it as strings — what a module's
+     * `compile` / `build-runtime` tasks are configured from. Resolved lazily; fails with the usual message when no
+     * profile was given.
+     */
+    val target: Provider<SelectedTarget>
+        get() = blueprintFile.zip(profileFile) { b, p ->
+            materializing {
+                val blueprint = Documents.blueprint(b.asFile).value
+                val profile = Documents.profile(p.asFile).value
+                val t = blueprint.target(profile.target)
+                SelectedTarget(
+                    id = t.id,
+                    abi = (t.target["abi"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty(),
+                    cartridgeId = DescriptorResolver.cartridgeId(blueprint, profile),
+                    params = t.params.orEmpty().mapValues { (_, v) -> (v as? kotlinx.serialization.json.JsonPrimitive)?.content ?: v.toString() },
+                    toolchain = blueprint.toolchain.mapValues { it.value.version },
+                    images = blueprint.toolchain.mapNotNull { (k, v) -> v.image?.let { k to it } }.toMap(),
+                )
+            }
+        }
+
+    /**
+     * A fetched, digest-verified source file, for wiring into a model-specific step. Depends on `blueprintFetch`.
+     * `source` and `path` are the names used in `blueprint.json`.
+     */
+    fun sourceFile(source: String, path: String): Provider<org.gradle.api.file.RegularFile> =
+        fetchTask.flatMap { it.linksDir.file("$source/$path") }
 
     /**
      * Registers what a step of kind convert / quantize / export / compile / build-runtime produced, under the
@@ -76,12 +112,29 @@ abstract class BlueprintExtension {
     }
 }
 
+/** See [BlueprintExtension.target]. Serializable so it can be a task input under the configuration cache. */
+data class SelectedTarget(
+    val id: String,
+    val abi: String,
+    val cartridgeId: String,
+    val params: Map<String, String>,
+    val toolchain: Map<String, String>,
+    val images: Map<String, String>,
+) : java.io.Serializable {
+    fun param(name: String): String = params[name]
+        ?: throw GradleException("Blueprint target '$id' has no param '$name' (has: ${params.keys})")
+
+    fun image(tool: String): String = images[tool]
+        ?: throw GradleException("Blueprint toolchain entry '$tool' has no container image")
+}
+
 class BlueprintPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val ext = project.extensions.create("blueprint", BlueprintExtension::class.java)
         ext.blueprintFile.convention(project.layout.projectDirectory.file("blueprint.json"))
         ext.sourcesDir.convention(project.layout.dir(project.provider { JvmDataSourceResolver.defaultCacheDir() }))
         ext.outputDir.convention(project.layout.buildDirectory.dir("cartridge"))
+        ext.sourceLinksDir.convention(project.layout.buildDirectory.dir("blueprint/sources"))
         project.providers.gradleProperty("profile").orNull?.let { ext.profileFile.convention(project.layout.projectDirectory.file(it)) }
 
         val materializerId = "$PLUGIN_ID@${pluginVersion()}"
@@ -99,8 +152,10 @@ class BlueprintPlugin : Plugin<Project> {
             blueprintFile.set(ext.blueprintFile)
             profileFile.set(ext.profileFile)
             sourcesDir.set(ext.sourcesDir)
+            linksDir.set(ext.sourceLinksDir)
             offline.set(project.gradle.startParameter.isOffline)
         }
+        ext.fetchTask = fetch
 
         project.tasks.register("materializeCartridge", MaterializeCartridgeTask::class.java) {
             group = GROUP
@@ -165,6 +220,8 @@ abstract class BlueprintFetchTask : DefaultTask() {
     @get:InputFile @get:Optional @get:PathSensitive(PathSensitivity.NONE) abstract val profileFile: RegularFileProperty
     // A shared, machine-wide cache — not a task output: Gradle must neither own nor clean it.
     @get:Internal abstract val sourcesDir: DirectoryProperty
+    /** Stable, per-project paths to the verified files: `<linksDir>/<source>/<path>` → the cached file. */
+    @get:OutputDirectory abstract val linksDir: DirectoryProperty
     @get:Input abstract val offline: Property<Boolean>
 
     init {
@@ -190,8 +247,19 @@ abstract class BlueprintFetchTask : DefaultTask() {
         )
         Selection.sources(blueprint.value, profile.value).forEach { source ->
             logger.lifecycle("source '${source.name}' (${source.license}, ${source.uri} @ ${source.revision})")
-            fetcher.fetch(source)
+            fetcher.fetch(source).forEach { (path, cached) -> link(File(linksDir.get().asFile, "${source.name}/$path"), cached) }
         }
+    }
+}
+
+/** A symlink into the cache where the platform allows it, otherwise a copy — weights are large, links are free. */
+internal fun link(at: File, target: File) {
+    at.parentFile.mkdirs()
+    java.nio.file.Files.deleteIfExists(at.toPath())
+    try {
+        java.nio.file.Files.createSymbolicLink(at.toPath(), target.toPath().toAbsolutePath())
+    } catch (_: Exception) {
+        target.copyTo(at, overwrite = true)
     }
 }
 
