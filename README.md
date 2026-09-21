@@ -22,7 +22,7 @@ Normative text: [Blueprints](https://skainet-developers.github.io/SKaiNET-cartri
 | Path | Content | Status |
 |---|---|---|
 | [`blueprint-gradle-plugin/`](blueprint-gradle-plugin/) | Gradle plugin `sk.ainet.cartridge.blueprint` — the materializer | core working, see below |
-| `blueprints/nlu-functiongemma-270m-iree/` | Function-calling NLU, FunctionGemma 270M (weights: Gemma Terms of Use, acceptance required) | planned |
+| [`blueprints/nlu-functiongemma-270m-iree/`](blueprints/nlu-functiongemma-270m-iree/) | Function-calling NLU on Android, FunctionGemma 270M — Kotlin API, recipe, step-by-step guide (weights: Gemma Terms of Use, acceptance required) | recipe verified step by step; end-to-end materialization needs your license acceptance |
 | `blueprints/asr-moonshine-v2-streaming-iree/` | Streaming ASR, Moonshine v2 tiny, en + de (weights: MIT) | planned |
 | `docs/` | Model-specific guides: download, convert, quantize, compile | planned |
 
@@ -66,6 +66,12 @@ What it does today, each covered by tests:
 The steps in between — convert, quantize, export, compile, build-runtime, measure — are model- and
 backend-specific. They are ordinary Gradle tasks in each blueprint module; the plugin sees their results as
 named *products*.
+
+Reusable step tasks the plugin offers to blueprint modules: `HostGatherTask` (move a decoder's token-embedding
+lookup to the host; a text rewrite of the exported StableHLO, byte-identical to the rewrite it replaces),
+`IreeCompileTask` and `IreeConvertParametersTask` (IREE tools, StableHLO → IREE, in the pinned container image),
+`blueprint.sourceFile(source, path)` (a fetched, verified file as a task input) and `blueprint.target` (the
+profile's target and its params).
 
 The signing key is read from the environment variable the profile's `signing.key_ref` names, or from
 `-PsigningKeyFile=<pem>` (unencrypted PKCS#8, `openssl genpkey -algorithm ed25519`). It is never in a profile.

@@ -23,6 +23,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "SKaiNET-cartridge-blueprints"
 
-// Blueprint modules are added here as they land:
-//   include(":blueprints:nlu-functiongemma-270m-iree")
-//   include(":blueprints:asr-moonshine-v2-streaming-iree")
+include(":blueprints:nlu-functiongemma-270m-iree")
+// Next: include(":blueprints:asr-moonshine-v2-streaming-iree")
