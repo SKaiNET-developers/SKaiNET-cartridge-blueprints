@@ -1,125 +1,128 @@
 package sk.ainet.cartridge.blueprint.core
 
+import kotlinx.coroutines.runBlocking
 import sk.ainet.cartridge.blueprint.model.MaterializationException
 import sk.ainet.cartridge.blueprint.model.Source
 import sk.ainet.cartridge.blueprint.model.SourceFile
+import sk.ainet.data.source.CachePolicy
+import sk.ainet.data.source.DataSourceAuthToken
+import sk.ainet.data.source.DataSourceException
+import sk.ainet.data.source.DataSourceRequest
+import sk.ainet.data.source.DataSourceResolver
+import sk.ainet.data.source.JvmDataSourceResolver
 import java.io.File
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.time.Duration
 
 /**
- * Step 3: fetch every file of a source and verify its digest. The only place a materialization touches the
- * network. A mirror changes where bytes come from, never which bytes: the digests are the blueprint's.
+ * Step 3: fetch every file of a source and verify its digest — the only place a materialization touches the
+ * network.
+ *
+ * The transport is SKaiNET's own `skainet-data-source`: `hf://`, https and local files, SHA-256 verified while
+ * streaming and before anything is committed to its cache, a shared cache (`~/.cache/skainet/data` by default),
+ * and Hugging Face tokens that are attached to hub requests only and not forwarded along redirects
+ * (pinned by `SkainetDataSourceBehaviourTest`). What stays here is blueprint policy: how a source's
+ * `uri` + `revision` + file path (or a profile's mirror) become one request, which schemes a blueprint may use,
+ * and what a person building is told when something is wrong.
  */
 class SourceFetcher(
-    private val cacheDir: File,
+    private val resolver: DataSourceResolver,
     private val mirrors: Map<String, String> = emptyMap(),
-    private val bearerToken: (host: String) -> String? = { null },
+    private val offline: Boolean = false,
     private val log: (String) -> Unit = {},
 ) {
-    private val http: HttpClient by lazy {
-        HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).connectTimeout(Duration.ofSeconds(30)).build()
-    }
+    constructor(
+        cacheDir: File = JvmDataSourceResolver.defaultCacheDir(),
+        mirrors: Map<String, String> = emptyMap(),
+        offline: Boolean = false,
+        huggingFaceToken: String? = null,
+        log: (String) -> Unit = {},
+    ) : this(
+        resolver = JvmDataSourceResolver(
+            cacheDir = cacheDir,
+            huggingFaceToken = DataSourceAuthToken.fromOrNull(huggingFaceToken),
+            // HF_TOKEN / HUGGING_FACE_HUB_TOKEN, read by SKaiNET itself when no token was handed in.
+            useEnvironmentHuggingFaceToken = huggingFaceToken == null,
+        ),
+        mirrors = mirrors,
+        offline = offline,
+        log = log,
+    )
 
     /** @return source file path → verified local file */
     fun fetch(source: Source): Map<String, File> =
         source.files.associate { f -> f.path to fetchFile(source, f) }
 
     private fun fetchFile(source: Source, file: SourceFile): File {
-        val dest = File(cacheDir, "${source.name}/${source.revision}/${file.path}").canonicalFile
-        if (!dest.path.startsWith(cacheDir.canonicalPath + File.separator)) {
-            throw MaterializationException("Source '${source.name}': file path '${file.path}' escapes the cache directory")
+        val uri = requestUri(source, file)
+        val expected = file.digest.removePrefix("sha256:")
+        fun resolve(policy: CachePolicy) = runBlocking {
+            resolver.resolve(DataSourceRequest(uri = uri, cachePolicy = policy, expectedSha256 = expected))
         }
-        if (dest.isFile && Digests.sha256(dest) == file.digest) {
-            log("  ${source.name}/${file.path}: cached, digest ok")
-            return dest
-        }
-        val url = resolve(source, file)
-        log("  ${source.name}/${file.path}: fetching $url")
-        dest.parentFile.mkdirs()
-        val tmp = File(dest.parentFile, dest.name + ".part")
-        try {
-            download(url, tmp)
-            val actual = Digests.sha256(tmp)
-            if (actual != file.digest) {
-                throw MaterializationException(
-                    "Digest mismatch for source '${source.name}', file '${file.path}':\n" +
-                        "  expected ${file.digest}\n  actual   $actual\n  from     $url\n" +
-                        "The blueprint pins these bytes. A different file at the same revision means the publisher " +
-                        "(or a mirror) changed it; do not proceed.",
-                )
+
+        val artifact = try {
+            try {
+                resolve(if (offline) CachePolicy.Offline else CachePolicy.Use)
+            } catch (e: DataSourceException) {
+                // A cached copy that no longer matches (corrupted, or cached before the pin moved) is refreshed
+                // once; if the publisher's bytes do not match either, that is fatal.
+                if (offline || !e.isDigestMismatch()) throw e
+                log("  ${source.name}/${file.path}: cached copy does not match the pinned digest, fetching again")
+                resolve(CachePolicy.Refresh)
             }
-            Files.move(tmp.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        } finally {
-            tmp.delete()
+        } catch (e: DataSourceException) {
+            throw explain(source, file, uri, e)
+        } catch (e: MaterializationException) {
+            throw e
+        } catch (e: Exception) {
+            throw explain(source, file, uri, e)
         }
-        return dest
+
+        val local = artifact.localPath?.let(::File)
+            ?: throw MaterializationException("Source '${source.name}', file '${file.path}': the resolver returned no local file for $uri")
+        log("  ${source.name}/${file.path}: ${if (artifact.cacheHit) "cached" else "fetched"}, digest ok")
+        return local
     }
 
-    /** `hf://org/repo` → the hub's immutable-revision URL; a mirror replaces the base and keeps `<path>`. */
-    internal fun resolve(source: Source, file: SourceFile): URI {
-        mirrors[source.name]?.let { return URI(it.trimEnd('/') + "/" + encodePath(file.path)) }
-        val uri = source.uri
+    /**
+     * One request URI per file. `hf://org/repo` + revision + path → SKaiNET's `hf://org/repo@revision/path`;
+     * a mirror replaces the base and keeps the path. A mirror changes where bytes come from, never which bytes.
+     */
+    internal fun requestUri(source: Source, file: SourceFile): String {
+        val base = mirrors[source.name] ?: source.uri
+        val path = file.path.trimStart('/')
+        if (path.split('/').any { it == ".." }) {
+            throw MaterializationException("Source '${source.name}': file path '${file.path}' must not contain '..'")
+        }
         return when {
-            uri.startsWith("hf://") ->
-                URI("https://huggingface.co/${uri.removePrefix("hf://").trim('/')}/resolve/${source.revision}/${encodePath(file.path)}")
-            uri.startsWith("https://") || uri.startsWith("file:") ->
-                URI(uri.trimEnd('/') + "/" + encodePath(file.path))
-            else -> throw MaterializationException("Source '${source.name}': unsupported uri scheme in '$uri' (hf://, https://, file:)")
+            base.startsWith("hf://") -> "hf://${base.removePrefix("hf://").trim('/')}@${source.revision}/$path"
+            base.startsWith("https://") -> base.trimEnd('/') + "/" + path
+            base.startsWith("file:") -> File(File(URI(base)), path).path
+            else -> throw MaterializationException(
+                "Source '${source.name}': unsupported uri scheme in '$base'. A blueprint source (or its mirror) is " +
+                    "hf://<org>/<repo>, an https:// URL, or file: — plain http is not fetched.",
+            )
         }
     }
 
-    private companion object {
-        const val MAX_REDIRECTS = 5
-        val REDIRECTS = setOf(301, 302, 303, 307, 308)
-    }
+    private fun DataSourceException.isDigestMismatch() = message?.contains("SHA-256 mismatch") == true
 
-    private fun encodePath(path: String): String =
-        path.split('/').joinToString("/") { URI(null, null, it, null).rawPath }
-
-    private fun download(url: URI, dest: File) {
-        if (url.scheme == "file") {
-            val src = File(url)
-            if (!src.isFile) throw MaterializationException("Not found: $url")
-            Files.copy(src.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            return
+    private fun explain(source: Source, file: SourceFile, uri: String, e: Exception): MaterializationException {
+        val msg = e.message.orEmpty()
+        val text = when {
+            e is DataSourceException && e.isDigestMismatch() ->
+                "Digest mismatch for source '${source.name}', file '${file.path}' ($uri):\n  $msg\n" +
+                    "The blueprint pins these bytes. A different file at the same revision means the publisher " +
+                    "(or a mirror) changed it; do not proceed."
+            msg.contains("offline", ignoreCase = true) ->
+                "Source '${source.name}', file '${file.path}' is not in the local cache and the build is offline ($uri)."
+            Regex("\\b40[13]\\b").containsMatchIn(msg) ->
+                "Access denied for source '${source.name}', file '${file.path}' ($uri): the publisher requires " +
+                    "authentication and/or accepted terms. For hf:// sources: accept the model's terms on its page " +
+                    "and set HF_TOKEN.\n  $msg"
+            Regex("\\b404\\b").containsMatchIn(msg) || msg.contains("not found", ignoreCase = true) ->
+                "Source '${source.name}': no file '${file.path}' at revision '${source.revision}' ($uri).\n  $msg"
+            else -> "Could not fetch source '${source.name}', file '${file.path}' ($uri): $msg"
         }
-        // Redirects are followed by hand so that a credential is only ever sent to the host it was issued for:
-        // model hubs redirect large files to a CDN, and an Authorization header must not travel with that hop.
-        var current = url
-        repeat(MAX_REDIRECTS + 1) {
-            if (current.scheme != "https") throw MaterializationException("Refusing to fetch over '${current.scheme}': $current")
-            val request = HttpRequest.newBuilder(current).timeout(Duration.ofMinutes(60)).GET().apply {
-                if (current.host == url.host) bearerToken(current.host)?.let { header("Authorization", "Bearer $it") }
-            }.build()
-            val response = http.send(request, HttpResponse.BodyHandlers.ofFile(dest.toPath()))
-            val status = response.statusCode()
-            when {
-                status in 200..299 -> return
-                status in REDIRECTS -> {
-                    dest.delete()
-                    val location = response.headers().firstValue("Location").orElseThrow {
-                        MaterializationException("HTTP $status without a Location header for $current")
-                    }
-                    current = current.resolve(location)
-                }
-                else -> {
-                    dest.delete()
-                    val hint = when (status) {
-                        401, 403 -> " — the publisher requires authentication and/or accepted terms for this file " +
-                            "(for hf:// sources: accept the model's terms on its page and set HF_TOKEN)"
-                        404 -> " — no such file at this revision"
-                        else -> ""
-                    }
-                    throw MaterializationException("HTTP $status for $current$hint")
-                }
-            }
-        }
-        throw MaterializationException("Too many redirects fetching $url")
+        return MaterializationException(text, e)
     }
 }

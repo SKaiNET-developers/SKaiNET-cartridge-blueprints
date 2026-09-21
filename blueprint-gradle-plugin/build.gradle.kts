@@ -13,6 +13,12 @@ version = providers.gradleProperty("version").getOrElse("0.1.0-SNAPSHOT")
 dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.optimumcode.json.schema.validator)
+    // Dog food: sources are fetched with SKaiNET's own data-source module (hf://, https, file, sha256, cache).
+    implementation(libs.skainet.data.source)
+    implementation(libs.kotlinx.coroutines.core)
+    // skainet-data-source exposes kotlinx.io.Source in its public API but declares kotlinx-io as `implementation`
+    // (upstream: should be `api`), so a consumer has to add it to compile against openSource()/copyTo().
+    implementation(libs.kotlinx.io.core)
 
     testImplementation(kotlin("test"))
 }

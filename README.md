@@ -49,8 +49,12 @@ What it does today, each covered by tests:
 - validates `blueprint.json` and the profile against the spec's JSON Schemas (bundled at a recorded spec commit);
 - **stops before any download** when a source is `acceptance-required` and the profile records no acceptance — it
   never accepts a license for you;
-- fetches `hf://`, `https://` and `file:` sources (or a profile's mirror), verifies every SHA-256, caches by digest;
-  a credential (`HF_TOKEN`) is sent only to the host it belongs to, never along a redirect;
+- fetches `hf://`, `https://` and `file:` sources (or a profile's mirror) **with SKaiNET's own
+  [`skainet-data-source`](https://github.com/SKaiNET-developers/SKaiNET/tree/develop/skainet-data/skainet-data-source)**:
+  SHA-256 verified while streaming and before anything enters the cache, one shared cache per machine
+  (`~/.cache/skainet/data`), `./gradlew --offline` served from that cache, and `HF_TOKEN` /
+  `HUGGING_FACE_HUB_TOKEN` attached to hub requests only — not forwarded along the hub's CDN redirect
+  (pinned by a test). Plain `http://` is refused;
 - resolves the descriptor from the template — `performance`/`quality` must come from the profile's *measurements*,
   never from a blueprint's reference numbers;
 - computes the effective license from what each artifact is `derived_from`;
@@ -72,7 +76,8 @@ The signing key is read from the environment variable the profile's `signing.key
 ./gradlew build        # builds the plugin, runs unit tests and TestKit functional tests
 ```
 
-JDK 21 or newer.
+JDK 21 or newer. `BLUEPRINT_NETWORK_TESTS=1 ./gradlew build` additionally runs real `hf://` downloads of two small,
+MIT-licensed, pinned files (off by default, so the build works offline).
 
 ## License
 

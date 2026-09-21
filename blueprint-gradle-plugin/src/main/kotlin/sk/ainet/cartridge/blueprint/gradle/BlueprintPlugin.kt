@@ -28,6 +28,7 @@ import sk.ainet.cartridge.blueprint.core.Materializer
 import sk.ainet.cartridge.blueprint.core.Selection
 import sk.ainet.cartridge.blueprint.core.SourceFetcher
 import sk.ainet.cartridge.blueprint.model.MaterializationException
+import sk.ainet.data.source.JvmDataSourceResolver
 import java.io.File
 
 /**
@@ -48,7 +49,10 @@ abstract class BlueprintExtension {
     /** The materialization profile. Default: the `-Pprofile=<path>` Gradle property. */
     abstract val profileFile: RegularFileProperty
 
-    /** Where fetched, digest-verified sources are kept. Default: `build/blueprint/sources`. */
+    /**
+     * Where fetched, digest-verified sources are cached. Default: SKaiNET's shared data cache
+     * (`~/.cache/skainet/data`), so a checkpoint is downloaded once per machine, not once per project.
+     */
     abstract val sourcesDir: DirectoryProperty
 
     /** Parent of the produced `pack_dir`. Default: `build/cartridge`. */
@@ -76,7 +80,7 @@ class BlueprintPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         val ext = project.extensions.create("blueprint", BlueprintExtension::class.java)
         ext.blueprintFile.convention(project.layout.projectDirectory.file("blueprint.json"))
-        ext.sourcesDir.convention(project.layout.buildDirectory.dir("blueprint/sources"))
+        ext.sourcesDir.convention(project.layout.dir(project.provider { JvmDataSourceResolver.defaultCacheDir() }))
         ext.outputDir.convention(project.layout.buildDirectory.dir("cartridge"))
         project.providers.gradleProperty("profile").orNull?.let { ext.profileFile.convention(project.layout.projectDirectory.file(it)) }
 
@@ -95,7 +99,7 @@ class BlueprintPlugin : Plugin<Project> {
             blueprintFile.set(ext.blueprintFile)
             profileFile.set(ext.profileFile)
             sourcesDir.set(ext.sourcesDir)
-            hfToken.set(project.providers.environmentVariable("HF_TOKEN"))
+            offline.set(project.gradle.startParameter.isOffline)
         }
 
         project.tasks.register("materializeCartridge", MaterializeCartridgeTask::class.java) {
@@ -105,6 +109,7 @@ class BlueprintPlugin : Plugin<Project> {
             blueprintFile.set(ext.blueprintFile)
             profileFile.set(ext.profileFile)
             sourcesDir.set(ext.sourcesDir)
+            offline.set(project.gradle.startParameter.isOffline)
             outputDir.set(ext.outputDir)
             productPaths.set(ext.productPaths)
             productFiles.from(ext.productFiles)
@@ -154,12 +159,17 @@ abstract class BlueprintValidateTask : DefaultTask() {
     }
 }
 
-@DisableCachingByDefault(because = "Downloads are cached by digest in sourcesDir")
+@DisableCachingByDefault(because = "Downloads are cached by SKaiNET's data-source cache, keyed and verified by digest")
 abstract class BlueprintFetchTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val blueprintFile: RegularFileProperty
     @get:InputFile @get:Optional @get:PathSensitive(PathSensitivity.NONE) abstract val profileFile: RegularFileProperty
-    @get:OutputDirectory abstract val sourcesDir: DirectoryProperty
-    @get:Internal abstract val hfToken: Property<String>
+    // A shared, machine-wide cache — not a task output: Gradle must neither own nor clean it.
+    @get:Internal abstract val sourcesDir: DirectoryProperty
+    @get:Input abstract val offline: Property<Boolean>
+
+    init {
+        outputs.upToDateWhen { false }   // cheap when cached; always re-verifies the digests
+    }
 
     @TaskAction
     fun fetch() = materializing {
@@ -171,11 +181,11 @@ abstract class BlueprintFetchTask : DefaultTask() {
             logger.warn("source '${it.name}' is `restricted` (${it.license}): check that your use satisfies its conditions" +
                 (it.licenseUrl?.let { url -> " — $url" } ?: ""))
         }
-        val token = hfToken.orNull
+        // Tokens (HF_TOKEN / HUGGING_FACE_HUB_TOKEN) are read and scoped by SKaiNET's data-source module itself.
         val fetcher = SourceFetcher(
             cacheDir = sourcesDir.get().asFile,
             mirrors = profile.value.mirrors,
-            bearerToken = { host -> token.takeIf { host == "huggingface.co" } },
+            offline = offline.get(),
             log = { logger.lifecycle(it) },
         )
         Selection.sources(blueprint.value, profile.value).forEach { source ->
@@ -190,6 +200,7 @@ abstract class MaterializeCartridgeTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val blueprintFile: RegularFileProperty
     @get:InputFile @get:Optional @get:PathSensitive(PathSensitivity.NONE) abstract val profileFile: RegularFileProperty
     @get:Internal abstract val sourcesDir: DirectoryProperty
+    @get:Input abstract val offline: Property<Boolean>
     @get:OutputDirectory abstract val outputDir: DirectoryProperty
     @get:Input abstract val productPaths: MapProperty<String, String>
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val productFiles: ConfigurableFileCollection
@@ -201,7 +212,7 @@ abstract class MaterializeCartridgeTask : DefaultTask() {
         val blueprint = Documents.blueprint(blueprintFile.get().asFile)
         val profile = Documents.profile(profileFile.requireProfile())
         // Already fetched and verified by blueprintFetch; this re-reads the cache and re-checks the digests.
-        val fetcher = SourceFetcher(cacheDir = sourcesDir.get().asFile, mirrors = profile.value.mirrors)
+        val fetcher = SourceFetcher(cacheDir = sourcesDir.get().asFile, mirrors = profile.value.mirrors, offline = offline.get())
         val fetched = Selection.sources(blueprint.value, profile.value).associate { it.name to fetcher.fetch(it) }
 
         val key = signingKey(profile.value.signing?.keyRef)

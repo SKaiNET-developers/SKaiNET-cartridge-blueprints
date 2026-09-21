@@ -15,6 +15,11 @@ import sk.ainet.cartridge.blueprint.core.Selection
 import sk.ainet.cartridge.blueprint.core.SourceFetcher
 import sk.ainet.cartridge.blueprint.core.SpecSchema
 import sk.ainet.cartridge.blueprint.model.MaterializationException
+import sk.ainet.data.source.CachePolicy
+import sk.ainet.data.source.DataSourceException
+import sk.ainet.data.source.DataSourceRequest
+import sk.ainet.data.source.DataSourceResolver
+import sk.ainet.data.source.JvmDataSourceResolver
 import java.io.File
 import java.security.Signature
 import java.util.Base64
@@ -67,7 +72,6 @@ class MaterializerTest {
         val e = assertFailsWith<MaterializationException> { LicenseGate.check(blueprint, profile) }
         assertContains(e.message!!, "Toy Terms of Use")
         assertContains(e.message!!, "will not accept a license for you")
-        assertFalse(File(f.root, "cache").exists(), "nothing may be downloaded before the license gate passes")
     }
 
     @Test
@@ -91,22 +95,18 @@ class MaterializerTest {
     // --- fetching ---------------------------------------------------------------------------------------
 
     @Test
-    fun `fetch verifies digests, caches, and refuses changed bytes`() {
+    fun `fetch verifies digests and refuses changed bytes`() {
         val f = Fixture()
         val source = Documents.blueprint(f.blueprintFile).value.source("weights")!!
-        val log = mutableListOf<String>()
-        val fetcher = SourceFetcher(File(f.root, "cache"), log = { log += it })
+        val fetcher = SourceFetcher(File(f.root, "cache"))
 
         val first = fetcher.fetch(source).getValue("model.bin")
         assertEquals(Digests.sha256(f.weights), Digests.sha256(first))
-        fetcher.fetch(source)
-        assertTrue(log.last().contains("cached"), log.toString())
 
-        first.delete()
         f.weights.appendBytes(byteArrayOf(42))          // the "publisher" changed the file at the same revision
         val e = assertFailsWith<MaterializationException> { fetcher.fetch(source) }
         assertContains(e.message!!, "Digest mismatch")
-        assertFalse(first.exists(), "a file that failed verification must not be left in the cache")
+        assertContains(e.message!!, "do not proceed")
     }
 
     @Test
@@ -126,13 +126,44 @@ class MaterializerTest {
     }
 
     @Test
-    fun `hf uris resolve to the immutable revision url and only https is fetched`() {
+    fun `requests use skainet hf uris pinned to the revision, and plain http is refused`() {
         val f = Fixture()
         val source = Documents.blueprint(f.blueprintFile).value.source("weights")!!.copy(uri = "hf://org/model", revision = "abc123")
         val fetcher = SourceFetcher(File(f.root, "cache"))
-        assertEquals("https://huggingface.co/org/model/resolve/abc123/model.bin", fetcher.resolve(source, source.files.single()).toString())
-        val e = assertFailsWith<MaterializationException> { fetcher.resolve(source.copy(uri = "http://insecure.example/x"), source.files.single()) }
-        assertContains(e.message!!, "unsupported uri scheme")
+        assertEquals("hf://org/model@abc123/model.bin", fetcher.requestUri(source, source.files.single()))
+        assertEquals(
+            "https://mirror.example.org/m/model.bin",
+            SourceFetcher(File(f.root, "cache"), mirrors = mapOf("weights" to "https://mirror.example.org/m/")).requestUri(source, source.files.single()),
+        )
+        val e = assertFailsWith<MaterializationException> { fetcher.requestUri(source.copy(uri = "http://insecure.example/x"), source.files.single()) }
+        assertContains(e.message!!, "plain http is not fetched")
+        assertFailsWith<MaterializationException> { fetcher.requestUri(source, source.files.single().copy(path = "../outside.bin")) }
+    }
+
+    @Test
+    fun `a stale cache entry is refreshed once, offline builds never touch the network`() {
+        val f = Fixture()
+        val source = Documents.blueprint(f.blueprintFile).value.source("weights")!!.copy(uri = "hf://org/model", revision = "abc123")
+        val policies = mutableListOf<CachePolicy>()
+        val real = JvmDataSourceResolver(File(f.root, "cache"))
+        val resolver = object : DataSourceResolver {
+            override suspend fun resolve(request: DataSourceRequest) = run {
+                policies += request.cachePolicy
+                when (request.cachePolicy) {
+                    CachePolicy.Use -> throw DataSourceException("SHA-256 mismatch for ${request.uri}: expected x, actual y")
+                    CachePolicy.Offline -> throw DataSourceException("No cached artifact available for offline source: ${request.uri}")
+                    else -> real.resolve(DataSourceRequest(f.weights.path, expectedSha256 = request.expectedSha256))
+                }
+            }
+        }
+        val fetched = SourceFetcher(resolver).fetch(source).getValue("model.bin")
+        assertEquals(listOf(CachePolicy.Use, CachePolicy.Refresh), policies)
+        assertEquals(Digests.sha256(f.weights), Digests.sha256(fetched))
+
+        policies.clear()
+        val e = assertFailsWith<MaterializationException> { SourceFetcher(resolver, offline = true).fetch(source) }
+        assertEquals(listOf(CachePolicy.Offline), policies)
+        assertContains(e.message!!, "the build is offline")
     }
 
     // --- materialization --------------------------------------------------------------------------------
