@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skainet-developers.github.io/SKaiNET-cartridge/schema/materialization-profile.schema.json",
+  "title": "Materialization profile",
+  "description": "What one party supplies to turn a blueprint into a cartridge: which blueprint, which target and flavors, the produced cartridge's version, license acceptances, optional source mirrors, the declared inputs, the measurements taken on the materialized artifacts, and who signs. Everything organization-specific lives here — never in the blueprint (blueprints.adoc).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "spec_version",
+    "kind",
+    "blueprint",
+    "target",
+    "cartridge"
+  ],
+  "properties": {
+    "spec_version": {
+      "const": "0.4"
+    },
+    "kind": {
+      "const": "materialization-profile"
+    },
+    "blueprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string",
+          "description": "Exact blueprint version. Ranges are not pins."
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "sha256 of the blueprint file. SHOULD be set: it is what makes `blueprint.version` mean one recipe."
+        },
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repo": {
+              "type": "string"
+            },
+            "commit": {
+              "type": "string"
+            },
+            "coordinates": {
+              "type": "string",
+              "description": "When the blueprint was consumed as a published artifact.",
+              "examples": [
+                "sk.ainet.cartridge:nlu-functiongemma-270m-iree:0.1.0"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "target": {
+      "type": "string",
+      "description": "Id of one of the blueprint's `targets`."
+    },
+    "flavors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Ids of the blueprint `flavors` to bundle. Omitted = the base only."
+    },
+    "cartridge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "Overrides the id the blueprint would give the materialized cartridge."
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$",
+          "description": "Version of the cartridge being produced — owned by whoever materializes, independent of the blueprint's version."
+        }
+      }
+    },
+    "license_acceptance": {
+      "type": "array",
+      "description": "One entry per source whose `redistribution` is `acceptance-required`. Without it the fetch step MUST refuse. A record of a decision a person made — never a default.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "license",
+          "accepted_by",
+          "accepted_at"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "license": {
+            "type": "string"
+          },
+          "terms_url": {
+            "type": "string"
+          },
+          "accepted_by": {
+            "type": "string",
+            "description": "The legal entity or person accepting."
+          },
+          "accepted_at": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      }
+    },
+    "mirrors": {
+      "type": "object",
+      "description": "Source name → alternative URI (an internal artifact store, a cache). A mirror changes where bytes come from, never which bytes: every digest in the blueprint still applies.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "Blueprint input name → the supplied file.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "license"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "license": {
+            "type": "string",
+            "description": "License of the supplied input; enters the effective-license computation like any source.",
+            "examples": [
+              "MIT",
+              "proprietary"
+            ]
+          }
+        }
+      }
+    },
+    "measurements": {
+      "type": "object",
+      "description": "Descriptor `performance` and `quality` (and per-flavor values), MEASURED on the artifacts this materialization produced, on the stated device. Omit when the blueprint's `measure` step produces them. Copying a blueprint's `reference_measurements` here is a spec violation.",
+      "additionalProperties": false,
+      "properties": {
+        "performance": {
+          "type": "object"
+        },
+        "quality": {
+          "type": "object"
+        },
+        "flavors": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "performance": {
+                "type": "object"
+              },
+              "quality": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "descriptor_overrides": {
+      "type": "object",
+      "description": "Descriptor fields only the materializing party can state, e.g. `requirements.driver` for a specific device fleet or `attributes` that follow from a supplied input.",
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "spec_version",
+            "family",
+            "modality",
+            "task",
+            "io",
+            "license",
+            "performance",
+            "quality"
+          ]
+        }
+      }
+    },
+    "signing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "keyid",
+        "signer"
+      ],
+      "properties": {
+        "keyid": {
+          "type": "string"
+        },
+        "signer": {
+          "type": "string",
+          "description": "Who vouches for this cartridge: the materializing party, not the blueprint's authors."
+        },
+        "key_ref": {
+          "type": "string",
+          "description": "Reference the materializer resolves to the private key (a CI secret name, a key store alias). Never the key."
+        }
+      }
+    }
+  }
+}

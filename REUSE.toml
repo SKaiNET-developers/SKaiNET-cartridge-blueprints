@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 SKaiNET Developers
+# SPDX-License-Identifier: MIT
+
+version = 1
+
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 SKaiNET Developers"
+SPDX-License-Identifier = "MIT"
+
+# Gradle wrapper scripts and jar are upstream Gradle, Apache-2.0.
+[[annotations]]
+path = ["gradlew", "gradlew.bat", "gradle/wrapper/**"]
+precedence = "override"
+SPDX-FileCopyrightText = "2015 the original authors (Gradle Inc.)"
+SPDX-License-Identifier = "Apache-2.0"

@@ -1,0 +1,14 @@
+[versions]
+kotlin = "2.4.10"
+kotlinxSerializationJson = "1.11.0"
+jsonSchemaValidator = "0.5.5"
+skainet = "0.56.0"
+kotlinxCoroutines = "1.11.0"
+kotlinxIo = "0.9.1"
+
+[libraries]
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+skainet-data-source = { module = "sk.ainet.core:skainet-data-source", version.ref = "skainet" }
+kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinxIo" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+optimumcode-json-schema-validator = { module = "io.github.optimumcode:json-schema-validator", version.ref = "jsonSchemaValidator" }
