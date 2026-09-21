@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skainet-developers.github.io/SKaiNET-cartridge/schema/cartridge-descriptor.schema.json",
+  "title": "Cartridge capability descriptor",
+  "description": "Machine-readable metadata a host routes on to select among cartridges, per the cartridge contract (index.adoc 'Anatomy of a cartridge'). Describes what a cartridge IS and MEASURES, not what it promises. v0.2: adds spec_version, family, model, quality (mandatory for task=asr), performance.methodology, attributes.endpointing, requirements.os; removes fallback_of (ADR-006 — fallback is resolved, not declared). v0.3: adds flavors (ADR-014) — additional measured variants (language, runtime tier, ABI) sharing one descriptor's task/family/io/license identity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spec_version", "id", "version", "family", "modality", "task", "io", "target", "performance", "execution_mode", "license"],
+  "properties": {
+    "spec_version": {
+      "enum": ["0.3", "0.4"],
+      "description": "The cartridge-spec version this descriptor conforms to. The descriptor shape is unchanged between 0.3 and 0.4 (v0.4 adds blueprints and optional manifest provenance), so both are valid."
+    },
+    "execution_mode": {
+      "type": "string",
+      "enum": ["native", "eager"],
+      "description": "'native' = HW-compiled/optimized for `target` (a vendor NPU compiler, ORT with the ABI's kernels, IREE). 'eager' = portable reference implementation — the universal fallback tier, contract-compliant by design (v0.2 contract, 'fastest path for its declared execution_mode')."
+    },
+    "family": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Model-family identity — the binary-plane grouping (ADR-006). Same family + same io contract = package-swappable; also scopes weight-update applicability. NOT a fallback declaration: fallback is resolved by the host from task + required attributes + tier preference.",
+      "examples": ["whisper-tiny", "moonshine-tiny-streaming"]
+    },
+    "id": {
+      "type": "string",
+      "description": "Stable identity, OQ3 naming convention: <task>-<model>-<runtime>-<target>.",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "examples": ["asr-whisper-tiny-npu-armv7", "asr-moonshine-ort-cpu"]
+    },
+    "version": {
+      "type": "string",
+      "description": "Cartridge build version. Semver recommended; a swap must be auditable (OQ3).",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$",
+      "examples": ["1.0.0", "0.3.1-rc1"]
+    },
+    "model": {
+      "type": "object",
+      "description": "Provenance of the model this cartridge runs — where the weights descend from and under what terms (ADR-004). The manifest carries digests; this carries identity.",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "examples": ["whisper-tiny", "moonshine-tiny-streaming"] },
+        "variant": {
+          "type": "string",
+          "description": "Build-specific variant: quantization, window, language set.",
+          "examples": ["4s-int8-hybrid-en", "ort-tiny-streaming-en"]
+        },
+        "params": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Parameter count, if known."
+        },
+        "checkpoint": {
+          "type": "string",
+          "description": "The upstream checkpoint the weights derive from.",
+          "examples": ["openai/whisper-tiny", "usefulsensors/moonshine-tiny-streaming"]
+        },
+        "upstream": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "source": { "type": "string", "description": "URL or identifier of the upstream model source." },
+            "license": {
+              "type": "string",
+              "description": "The upstream model's license (SPDX where possible). The cartridge's effective `license` must fulfill this (ADR-004)."
+            }
+          }
+        }
+      }
+    },
+    "license": {
+      "type": "string",
+      "description": "The cartridge's EFFECTIVE license (ADR-004): must be satisfiable given every per-artifact upstream license recorded in the manifest. An SPDX identifier means open and redistributable; 'proprietary' or a license/entitlement URL means gated (pair with an `encryption` block on the weights artifact); 'NOASSERTION' marks a not-yet-remediated package and is treated as a FAILURE by conformance tooling, by design.",
+      "examples": ["Apache-2.0", "MIT", "proprietary", "NOASSERTION", "https://example.com/licenses/asr-whisper-tiny-commercial"]
+    },
+    "modality": {
+      "type": "string",
+      "enum": ["audio", "image", "text", "video", "sensor"]
+    },
+    "task": {
+      "type": "string",
+      "description": "Open vocabulary — extend as new cartridge types appear.",
+      "examples": ["asr", "detection", "classification", "generation", "embedding", "tts"]
+    },
+    "io": {
+      "type": "object",
+      "description": "Input/output contract, in tensor or stream terms — not application terms. Same io + same family = binary-plane swappable (ADR-006).",
+      "additionalProperties": false,
+      "required": ["mode", "input", "output"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["batch", "streaming"]
+        },
+        "input": { "$ref": "#/$defs/ioPort" },
+        "output": { "$ref": "#/$defs/ioPort" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "description": "Hardware + ABI this cartridge runs on. A cartridge is built for exactly one target; a different target is a different cartridge instance.",
+      "additionalProperties": false,
+      "required": ["hardware", "abi"],
+      "properties": {
+        "hardware": {
+          "type": "string",
+          "examples": ["vendor-npu-armv7-soc", "CPU", "IREE-arm64-v8a"]
+        },
+        "abi": {
+          "type": "string",
+          "examples": ["armeabi-v7a", "arm64-v8a", "x86_64"]
+        },
+        "accelerator": {
+          "type": "string",
+          "description": "NPU/GPU identifier when hardware is accelerator-backed, else omit.",
+          "examples": ["vendor-npu v3"]
+        }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "description": "Measured on the stated target, reported honestly — including when it is not good enough. Never a promise or a spec-sheet number.",
+      "additionalProperties": false,
+      "required": ["measured_on"],
+      "properties": {
+        "rtf": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Real-time factor (processing time / audio duration). Lower is faster; <1 is faster than real time."
+        },
+        "latency_p50_ms": { "type": "number", "minimum": 0 },
+        "latency_p95_ms": { "type": "number", "minimum": 0 },
+        "measured_on": {
+          "type": "string",
+          "description": "What device/board/run this number came from, so it's falsifiable. Keep internal infrastructure details (device IPs, hostnames) OUT of public descriptors.",
+          "examples": ["vendor reference board, on-device run, 2026-07-16"]
+        },
+        "methodology": {
+          "type": "string",
+          "description": "Pointer (path or URL) to the workload/benchmark definition that produced these numbers — audio set, durations, device state — so the number is reproducible, not just asserted.",
+          "examples": ["WER harness (roadmap Phase 4).md#benchmark-workload"]
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "description": "Task-level quality, measured — the metric a swap or fallback decision actually needs (parity-within-tolerance does NOT measure task quality). MANDATORY for task=asr: either a measured wer, or an explicit unmeasured=true with the harness that will produce it — never silently absent.",
+      "additionalProperties": true,
+      "properties": {
+        "wer": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Word error rate on the stated dataset (asr)."
+        },
+        "dataset": { "type": "string", "examples": ["fleurs-de-commands-v1"] },
+        "dataset_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "Digest of the evaluation set, so the number is pinned to exact data."
+        },
+        "harness": {
+          "type": "string",
+          "description": "The tool/harness that produced (or will produce) the metric."
+        },
+        "measured_on": { "type": "string" },
+        "unmeasured": {
+          "type": "boolean",
+          "description": "Explicit marker that quality has not been measured yet. Conformance tooling flags it; policy decides whether that blocks."
+        }
+      },
+      "oneOf": [
+        { "required": ["wer", "dataset", "measured_on"] },
+        { "required": ["unmeasured", "harness"] }
+      ]
+    },
+    "attributes": {
+      "type": "object",
+      "description": "Task-specific properties a host may use as hard constraints or soft preferences. Open vocabulary by design.",
+      "additionalProperties": true,
+      "properties": {
+        "languages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "BCP-47 tags.",
+          "examples": [["en"], ["en", "de"]]
+        },
+        "streaming": { "type": "boolean" },
+        "endpointing": {
+          "type": "string",
+          "enum": ["none", "signal", "semantic"],
+          "description": "What endpointing machinery is INSIDE the cartridge (ADR-003): 'none' = host-driven stop only; 'signal' = VAD/segmentation inside, surfaced as data events (e.g. CTG_RESULT_ENDPOINT); 'semantic' = model-level end-of-utterance signals. Acting on any of them is host policy."
+        },
+        "context_window_s": { "type": "number", "exclusiveMinimum": 0 },
+        "label_set": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "description": "What a host must satisfy to run this cartridge, split by WHERE it is checkable: abi/os/packaging at build time; driver/memory/accelerator presence at runtime via ctg_preflight (abi.adoc) — a build machine cannot see fleet state.",
+      "additionalProperties": false,
+      "properties": {
+        "needs_accelerator": { "type": "boolean" },
+        "driver": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "examples": ["libnpu.so"] },
+            "min_version": { "type": "string", "examples": [">=1.7.1"] },
+            "note": {
+              "type": "string",
+              "description": "Human-readable constraint detail, e.g. why a patched build is required.",
+              "examples": ["stock vendor driver miscompiles int8 output on AArch32; patched >=1.7.1 required"]
+            }
+          }
+        },
+        "memory_mb": { "type": "integer", "minimum": 0 },
+        "os": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "examples": ["android", "linux"] },
+            "min_api": { "type": "integer", "minimum": 1, "description": "e.g. Android API level" }
+          }
+        }
+      }
+    },
+    "flavors": {
+      "type": "array",
+      "description": "Per ADR-014: additional variants of this same package — another bundled language, another runtime tier, another ABI — that differ from the base descriptor above in attributes/model/performance/quality/target/requirements. The base descriptor's own fields ARE the default flavor, unchanged; a host that does not understand `flavors` still resolves correctly against them. Each flavor is independently addressable (own `id`) and independently measured, subject to every rule that applies to the base descriptor (`quality` mandatory for task=asr on every flavor too — enforced by ctg-conform, not expressible as a schema conditional from inside an array item, since it needs the root `task`). A flavor field, when present, REPLACES the base descriptor's field of the same name in full for that flavor — no deep merge; repeat unchanged sub-fields rather than relying on inference. `spec_version`/`id`(base)/`version`/`family`/`execution_mode`/`license`/`modality`/`task`/`io` are never flavor-overridable — they define what makes this the same cartridge (ADR-006's binary-plane identity); a flavor that needs one of those to differ is a different cartridge, not a flavor.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "description": "Distinct from the base descriptor's `id` and every other flavor's `id`."
+          },
+          "attributes": { "$ref": "#/properties/attributes" },
+          "model": { "$ref": "#/properties/model" },
+          "performance": { "$ref": "#/properties/performance" },
+          "quality": { "$ref": "#/properties/quality" },
+          "target": { "$ref": "#/properties/target" },
+          "requirements": { "$ref": "#/properties/requirements" }
+        }
+      }
+    }
+  },
+  "if": { "properties": { "task": { "const": "asr" } } },
+  "then": { "required": ["quality"] },
+  "$defs": {
+    "ioPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dtype"],
+      "properties": {
+        "dtype": {
+          "type": "string",
+          "examples": ["float32", "int8", "int16-pcm"]
+        },
+        "shape": {
+          "type": "array",
+          "description": "Tensor shape; use null for a streaming/variable dimension.",
+          "items": { "type": ["integer", "null"] },
+          "examples": [[1, 80, 3000]]
+        },
+        "sample_rate_hz": {
+          "type": "integer",
+          "description": "For audio ports.",
+          "exclusiveMinimum": 0
+        },
+        "chunk_ms": {
+          "type": "integer",
+          "description": "For streaming ports: the unit the cartridge consumes/emits per call.",
+          "exclusiveMinimum": 0
+        },
+        "output_schema": {
+          "description": "Per ADR-007: a JSON-Schema fragment — inline, or a digest/pointer to one — describing the shape of a structured output port (e.g. a tool-call result: name + typed arguments), for ports whose output is a parsed, typed result rather than raw tensors or free text.",
+          "examples": [
+            {
+              "type": "object",
+              "required": ["name", "arguments"],
+              "properties": {
+                "name": { "type": "string" },
+                "arguments": { "type": "object" }
+              }
+            },
+            "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ]
+        }
+      }
+    }
+  }
+}

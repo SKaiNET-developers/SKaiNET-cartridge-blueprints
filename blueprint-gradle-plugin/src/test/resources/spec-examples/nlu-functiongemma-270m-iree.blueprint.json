@@ -1,0 +1,293 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "nlu-functiongemma-270m-iree",
+  "version": "0.1.0",
+  "description": "Function-calling NLU: FunctionGemma 270M exported to StableHLO and compiled with IREE. ILLUSTRATIVE worked example — revisions and digests are placeholders, not the real upstream values.",
+  "license": "MIT",
+  "descriptor_template": {
+    "execution_mode": "native",
+    "family": "functiongemma-270m",
+    "modality": "text",
+    "task": "nlu",
+    "model": {
+      "name": "functiongemma-270m-it",
+      "params": 270000000,
+      "upstream": {
+        "source": "google/functiongemma-270m-it",
+        "license": "Gemma Terms of Use"
+      }
+    },
+    "io": {
+      "mode": "batch",
+      "input": {
+        "dtype": "utf8-text"
+      },
+      "output": {
+        "dtype": "utf8-json",
+        "output_schema": {
+          "type": "object",
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "arguments": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "attributes": {
+      "languages": [
+        "en"
+      ],
+      "streaming": false
+    }
+  },
+  "sources": [
+    {
+      "name": "weights",
+      "role": "weights",
+      "uri": "hf://google/functiongemma-270m-it",
+      "revision": "0000000000000000000000000000000000000000",
+      "files": [
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+          "size": 536000000
+        },
+        {
+          "path": "config.json",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002"
+        }
+      ],
+      "license": "Gemma Terms of Use",
+      "license_url": "https://ai.google.dev/gemma/terms",
+      "redistribution": "acceptance-required"
+    },
+    {
+      "name": "tokenizer",
+      "role": "tokenizer",
+      "uri": "hf://google/functiongemma-270m-it",
+      "revision": "0000000000000000000000000000000000000000",
+      "files": [
+        {
+          "path": "tokenizer.json",
+          "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000003"
+        }
+      ],
+      "license": "Gemma Terms of Use",
+      "license_url": "https://ai.google.dev/gemma/terms",
+      "redistribution": "acceptance-required"
+    }
+  ],
+  "toolchain": {
+    "skainet": {
+      "version": "0.56.0",
+      "coordinates": "sk.ainet:skainet-bom"
+    },
+    "skainet-transformers": {
+      "version": "0.56.0",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-bom"
+    },
+    "iree-tools": {
+      "version": "3.11.0",
+      "description": "IREE tools (StableHLO -> IREE): iree-compile, iree-convert-parameters, runtime build"
+    },
+    "blueprint-plugin": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.blueprint"
+    }
+  },
+  "targets": [
+    {
+      "id": "vulkan-arm64",
+      "target": {
+        "hardware": "IREE-arm64-v8a",
+        "abi": "arm64-v8a",
+        "accelerator": "Vulkan GPU"
+      },
+      "requirements": {
+        "needs_accelerator": true
+      },
+      "params": {
+        "iree_backend": "vulkan-spirv",
+        "dtype": "bf16"
+      }
+    },
+    {
+      "id": "cpu-arm64",
+      "target": {
+        "hardware": "IREE-arm64-v8a",
+        "abi": "arm64-v8a"
+      },
+      "params": {
+        "iree_backend": "llvm-cpu",
+        "dtype": "f32"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "name": "tool-catalog",
+      "description": "The functions the model may call. Host- or organization-specific by nature, so it is an input, never part of the blueprint.",
+      "role": "other",
+      "required": true,
+      "schema": "schema/tool-catalog.schema.json"
+    }
+  ],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "weights",
+        "tokenizer"
+      ],
+      "produces": [
+        "weights-files",
+        "tokenizer-files"
+      ]
+    },
+    {
+      "id": "export",
+      "kind": "export",
+      "tool": "skainet-transformers",
+      "uses": [
+        "weights-files"
+      ],
+      "produces": [
+        "graphs-mlir",
+        "parameters-safetensors"
+      ],
+      "description": "Kotlin: trace prefill / prefill-with-past / with-past graphs to StableHLO; weights stay external.",
+      "per_target": true,
+      "params": {
+        "graphs": [
+          "prefill_at",
+          "prefill_with_past",
+          "with_past"
+        ]
+      }
+    },
+    {
+      "id": "compile",
+      "kind": "compile",
+      "tool": "iree-tools",
+      "uses": [
+        "graphs-mlir"
+      ],
+      "produces": [
+        "graphs-vmfb"
+      ],
+      "per_target": true
+    },
+    {
+      "id": "parameters",
+      "kind": "convert",
+      "tool": "iree-tools",
+      "uses": [
+        "parameters-safetensors"
+      ],
+      "produces": [
+        "parameters-irpa"
+      ],
+      "per_target": true
+    },
+    {
+      "id": "runtime",
+      "kind": "build-runtime",
+      "tool": "iree-tools",
+      "produces": [
+        "runtime-so"
+      ],
+      "per_target": true
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "graphs-vmfb",
+        "parameters-irpa",
+        "runtime-so",
+        "tokenizer-files",
+        "tool-catalog"
+      ],
+      "produces": [
+        "pack-dir"
+      ]
+    },
+    {
+      "id": "sign",
+      "kind": "sign",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "pack-dir"
+      ],
+      "produces": [
+        "manifest"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "from": "runtime-so",
+      "role": "runtime",
+      "path": "artifacts/runtime/libfunctiongemma-ctg.so",
+      "derived_from": []
+    },
+    {
+      "from": "graphs-vmfb",
+      "role": "model",
+      "path": "artifacts/model/",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "parameters-irpa",
+      "role": "weights",
+      "path": "artifacts/weights/parameters.irpa",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "tokenizer-files",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/tokenizer.json",
+      "derived_from": [
+        "tokenizer"
+      ]
+    },
+    {
+      "from": "tool-catalog",
+      "role": "other",
+      "path": "artifacts/other/tool-catalog.json",
+      "derived_from": [
+        "tool-catalog"
+      ]
+    }
+  ],
+  "verification": [
+    {
+      "id": "host-parity",
+      "kind": "parity",
+      "description": "Compiled graphs vs. the eager Kotlin reference on the host, greedy decode of the bundled prompts.",
+      "tolerance": 0.0
+    },
+    {
+      "id": "smoke-call",
+      "kind": "golden",
+      "description": "A three-function toy catalog shipped with the blueprint: fixed utterances must parse to the expected calls.",
+      "on_device": false
+    }
+  ]
+}

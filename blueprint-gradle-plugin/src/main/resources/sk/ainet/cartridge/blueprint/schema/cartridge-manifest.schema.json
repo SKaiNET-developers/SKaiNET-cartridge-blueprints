@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skainet-developers.github.io/SKaiNET-cartridge/schema/cartridge-manifest.schema.json",
+  "title": "Cartridge manifest (integrity, provenance, updates)",
+  "description": "Signed, content-addressed record of what a cartridge (or a weight-only update to one) actually contains, per 'Integrity, provenance, and weight-only updates' in index.adoc. The manifest, not the descriptor, is the thing a host verifies before load; the descriptor is what a host routes on. Signatures cover sha256(canonical_json(manifest without 'signatures')). v2: per-artifact license + derived_from (ADR-004), effective_license, provenance.evaluation (the weight-update regression gate).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "id", "version", "digest_alg", "artifacts", "signatures"],
+  "properties": {
+    "schema_version": { "const": "2" },
+    "effective_license": {
+      "type": "string",
+      "description": "The cartridge's effective license (same value as the descriptor's `license`): must be satisfiable given every artifact's `license` below (ADR-004). 'NOASSERTION' = unremediated, fails conformance by design."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["cartridge", "weights-update"],
+      "description": "'cartridge' = a full, loadable base (runtime + model + descriptor, etc). 'weights-update' = a weight-only delta that MUST carry a 'base' pin."
+    },
+    "id": {
+      "type": "string",
+      "description": "Same id as the cartridge this manifest describes or updates (see cartridge-descriptor.schema.json#id)."
+    },
+    "version": { "type": "string" },
+    "descriptor_digest": {
+      "$ref": "#/$defs/digest",
+      "description": "Digest of the canonicalized capability descriptor. Required when kind=cartridge; optional on a weights-update (only meaningful if the update also revises measured performance)."
+    },
+    "base": {
+      "description": "Required when kind=weights-update. Pins the exact base this update applies to, BY DIGEST — never by a mutable version tag — so a host can refuse to apply an update against anything but the artifact it actually installed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "version", "digest"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["cartridge", "weights-update"] },
+        "id": { "type": "string" },
+        "version": { "type": "string" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "digest_alg": { "const": "sha256" },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "producer": {
+          "type": "string",
+          "description": "What built this, and its version.",
+          "examples": ["npu-build@1.2.0", "federated-aggregator@0.4.0"]
+        },
+        "built_at": { "type": "string", "format": "date-time" },
+        "inputs": {
+          "type": "array",
+          "description": "Build inputs worth recording for audit (source model digest, calibration set digest, ...).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "digest"],
+            "properties": {
+              "name": { "type": "string" },
+              "digest": { "$ref": "#/$defs/digest" }
+            }
+          }
+        },
+        "training": {
+          "description": "Only meaningful when kind=weights-update produced by a training/aggregation round (e.g. federated learning).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "round": { "type": "integer", "minimum": 0 },
+            "method": {
+              "type": "string",
+              "examples": ["fedavg", "fedprox"]
+            },
+            "participants_count": { "type": "integer", "minimum": 0 },
+            "dp_epsilon": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Differential-privacy budget for this round, if applied."
+            }
+          }
+        },
+        "evaluation": {
+          "description": "v2, the weight-update regression gate (index.adoc 'Verification gate'): a weight update is SUPPOSED to change outputs, so parity-vs-previous is vacuous — what must hold is the task metric on a pinned eval set. Required by policy for kind=weights-update; a degradation ships only with an explicit waiver.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dataset_digest", "metric", "value", "baseline"],
+          "properties": {
+            "dataset_digest": { "$ref": "#/$defs/digest" },
+            "metric": { "type": "string", "examples": ["wer"] },
+            "value": { "type": "number", "description": "Metric with the NEW weights." },
+            "baseline": { "type": "number", "description": "Metric with the PREVIOUS weights, same eval set." },
+            "waiver": {
+              "type": "string",
+              "description": "Present only when value is worse than baseline: the recorded justification for shipping anyway. Never ship a degradation silently."
+            }
+          }
+        },
+        "blueprint": {
+          "description": "v0.4 (SKEEP-007, ADR-015): set when this cartridge was materialized from a blueprint — which recipe produced these bytes. `digest` is the sha256 of the blueprint file and is what makes `version` mean exactly one recipe.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "digest"],
+          "properties": {
+            "id": { "type": "string" },
+            "version": { "type": "string" },
+            "digest": { "$ref": "#/$defs/digest" },
+            "source": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "repo": { "type": "string" },
+                "commit": { "type": "string" },
+                "coordinates": { "type": "string", "examples": ["sk.ainet.cartridge:nlu-functiongemma-270m-iree:0.1.0"] }
+              }
+            }
+          }
+        },
+        "materialization": {
+          "description": "v0.4: how the blueprint was executed. `profile_digest` pins the materialization profile without publishing it (a private profile stays private; its digest still makes the build auditable to whoever holds it). `toolchain` records the versions ACTUALLY used, which equal the blueprint's pins unless a substitution is being declared.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target", "toolchain"],
+          "properties": {
+            "profile_digest": { "$ref": "#/$defs/digest" },
+            "target": { "type": "string", "description": "Id of the blueprint target that was materialized." },
+            "flavors": { "type": "array", "items": { "type": "string" } },
+            "toolchain": { "type": "object", "additionalProperties": { "type": "string" }, "examples": [{ "skainet": "0.56.0", "skainet-transformers": "0.56.0", "iree-tools": "3.11.0" }] },
+            "materializer": { "type": "string", "examples": ["sk.ainet.cartridge.blueprint@0.1.0"] }
+          }
+        }
+      }
+    },
+    "signatures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["keyid", "alg", "signer", "signature", "signed_at"],
+        "properties": {
+          "keyid": {
+            "type": "string",
+            "description": "Identifies the public key in the host's trust store. Never resolved from data inside this manifest."
+          },
+          "alg": { "type": "string", "enum": ["ed25519"] },
+          "signer": {
+            "type": "string",
+            "description": "Human-readable role/identity, e.g. 'publisher' or 'federated-aggregator'. The trust store, not this field, is authoritative on what the key is authorized to sign (OQ6)."
+          },
+          "signature": {
+            "type": "string",
+            "description": "Base64-encoded raw signature bytes over sha256(canonical_json(manifest without 'signatures'))."
+          },
+          "signed_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "digest", "size", "license"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["runtime", "model", "weights", "tokenizer", "calibration", "descriptor", "other"]
+        },
+        "path": { "type": "string" },
+        "digest": { "$ref": "#/$defs/digest" },
+        "size": { "type": "integer", "minimum": 0 },
+        "license": {
+          "type": "string",
+          "description": "v2, required (ADR-004): this artifact's license — SPDX where possible, 'proprietary', 'community-restricted', or 'NOASSERTION' (which the license gate fails by design). The cartridge's effective_license must satisfy ALL of these.",
+          "examples": ["MIT", "Apache-2.0", "CC-BY-4.0", "proprietary", "NOASSERTION"]
+        },
+        "derived_from": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "v2 (ADR-004): what upstream this artifact descends from — the compiled NPU blob derives from an upstream checkpoint, a baked-in blob derives from its source model. This is how license obligations trace through builds.",
+          "properties": {
+            "source": { "type": "string", "examples": ["openai/whisper-tiny", "snakers4/silero-vad"] },
+            "license": { "type": "string", "examples": ["MIT", "CC-BY-4.0"] }
+          }
+        },
+        "encryption": {
+          "description": "Optional. Confidentiality is independent of the signature above, which covers integrity/authenticity of the (possibly still-encrypted) bytes. See 'Encrypted weights' — modeled on SKaiNET Minerva's device-key pattern: the key itself is never in the manifest, only a reference the host resolves via its own provisioning.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["alg", "key_ref"],
+          "properties": {
+            "alg": {
+              "type": "string",
+              "examples": ["AES-256-GCM"]
+            },
+            "key_ref": {
+              "type": "string",
+              "description": "Opaque key identifier/slot resolved by the host's own key provisioning (secure element, device key store) — not a key or key material.",
+              "examples": ["device-key-slot-0", "kms://example-org/cartridge-weights/asr-whisper-tiny"]
+            }
+          }
+        },
+        "delivery": {
+          "description": "Optional (ADR-009). Marks this artifact as eligible for platform-native deferred delivery (Google Play Asset Delivery, Apple On-Demand Resources / Background Assets) instead of being bundled into the initial app install — a build-packaging hint, not a change to how the artifact is verified. Absent means 'bundled at install time', the only behavior prior manifests express.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["timing"],
+          "properties": {
+            "timing": {
+              "type": "string",
+              "enum": ["install-time", "fast-follow", "on-demand"],
+              "description": "Play Asset Delivery's own three-term vocabulary, reused rather than reinvented: bundled with the initial install; downloaded automatically right after install completes; fetched only when the app actually requests it."
+            },
+            "group": {
+              "type": "string",
+              "description": "Build-tool-owned pack/tag identifier (an actual Play asset pack name, an ODR tag, a Background Assets download identifier) — lives in that platform's own build config; this is just the label the staging step threads through, not a spec-level name for either store's tooling.",
+              "examples": ["asr-de-weights", "vision-router-weights"]
+            }
+          }
+        },
+        "component": {
+          "type": "string",
+          "description": "Optional (ADR-013). A cartridge-author-defined label for the internal stage/subnet this artifact belongs to, for cartridges that are internally a composed, multi-network pipeline (e.g. a streaming ASR cartridge's separate frontend/encoder/adapter/prefill/step models) rather than one monolithic model. Purely a grouping/selection label for tooling — it does not change how `kind=weights-update` applies: the update's `artifacts` array still explicitly lists every changed file by path+digest, exactly as today; `component` just lets that list, and a `delivery` grouping, be described and filtered by named stage instead of by filename convention alone. No enum: valid values are entirely cartridge-specific, the same way `role: other` and `derived_from.source` are open-ended today.",
+          "examples": ["frontend", "encoder", "adapter", "decoder", "prefill", "step"]
+        }
+      }
+    }
+  }
+}

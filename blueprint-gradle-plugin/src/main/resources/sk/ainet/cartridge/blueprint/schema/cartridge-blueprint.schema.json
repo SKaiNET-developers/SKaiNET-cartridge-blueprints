@@ -1,0 +1,524 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skainet-developers.github.io/SKaiNET-cartridge/schema/cartridge-blueprint.schema.json",
+  "title": "Cartridge blueprint",
+  "description": "Everything needed to BUILD a cartridge, and nothing that has to be downloaded to do so: identity, a descriptor template, pinned sources, a pinned toolchain, targets, and the ordered steps that turn sources into the artifacts of a pack_dir (blueprints.adoc, SKEEP-007, ADR-015). A blueprint carries no weights, no compiled model and no runtime binary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "spec_version",
+    "kind",
+    "id",
+    "version",
+    "license",
+    "descriptor_template",
+    "sources",
+    "toolchain",
+    "targets",
+    "steps",
+    "outputs"
+  ],
+  "properties": {
+    "spec_version": {
+      "const": "0.4",
+      "description": "The cartridge-spec version this blueprint conforms to."
+    },
+    "kind": {
+      "const": "blueprint"
+    },
+    "id": {
+      "type": "string",
+      "description": "Stable identity, OQ3 naming without the target: <task>-<model>-<runtime>. The id of a materialized cartridge is `<id>-<target id>` unless the target sets `cartridge_id`.",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "examples": [
+        "nlu-functiongemma-270m-iree",
+        "asr-moonshine-v2-streaming-iree"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "description": "Version of the blueprint (recipe + code), semver. Independent of the version of any cartridge materialized from it.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "license": {
+      "type": "string",
+      "description": "License of the blueprint's OWN content — code, recipe, docs. SPDX. This is NOT the effective license of a materialized cartridge, which is computed at materialization from the licenses of the sources and inputs actually used (ADR-004).",
+      "examples": [
+        "MIT",
+        "Apache-2.0"
+      ]
+    },
+    "descriptor_template": {
+      "type": "object",
+      "description": "A capability descriptor with the materialization-resolved fields left out. Template + resolved fields MUST validate against cartridge-descriptor.schema.json. The fields named in `propertyNames.not` are resolved by the materializer and MUST NOT appear here: identity and version come from the profile, `target` from the chosen target, `license` is computed, and `performance` / `quality` are MEASURED on the materialized artifacts — a blueprint cannot know them.",
+      "required": [
+        "family",
+        "modality",
+        "task",
+        "io",
+        "execution_mode"
+      ],
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "spec_version",
+            "id",
+            "version",
+            "license",
+            "target",
+            "performance",
+            "quality"
+          ]
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "description": "What materialization downloads. Every source is pinned by an immutable revision AND by the sha256 of every file taken from it.",
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "description": "Every tool a step names, pinned to an exact version. Keys are the names steps refer to in `tool`.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/tool"
+      }
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The targets this blueprint knows how to materialize for. A cartridge is built for exactly one of them.",
+      "items": {
+        "$ref": "#/$defs/target"
+      }
+    },
+    "flavors": {
+      "type": "array",
+      "description": "Optional. Variants one materialization can bundle as descriptor `flavors` (ADR-014) — typically a language: which sources belong to the variant and which descriptor fields it overrides.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sources"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "description": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of the `sources` this flavor needs."
+          },
+          "descriptor_overrides": {
+            "type": "object",
+            "description": "Descriptor fields this flavor replaces in full (ADR-014: no deep merge), e.g. `attributes` and `model`."
+          }
+        }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "description": "Materialization inputs: things the blueprint needs but deliberately does not contain, supplied by the materialization profile — a tool catalog, a calibration set, a vocabulary. Declaring them keeps host- or organization-specific content out of the blueprint.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "role",
+          "required"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "description": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/$defs/role",
+            "description": "The manifest artifact role the input takes in the materialized cartridge."
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "schema": {
+            "type": "string",
+            "description": "Path (relative to the blueprint) or URL of a JSON Schema the supplied input MUST validate against."
+          }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The recipe, in execution order. A step reads sources, inputs or earlier steps' products (`uses`) and yields named products (`produces`).",
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "description": "How step products become the manifest artifacts of the materialized pack_dir (ADR-012).",
+      "items": {
+        "$ref": "#/$defs/output"
+      }
+    },
+    "verification": {
+      "type": "array",
+      "description": "Checks a materialization MUST pass before it is packed and signed. Source digests are always verified and need no entry here.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "parity",
+              "golden",
+              "task-metric",
+              "conformance"
+            ],
+            "description": "'parity' = compiled/quantized output vs. float reference within `tolerance` (index.adoc, Developing, 5a); 'golden' = fixed input → expected output shipped with the blueprint; 'task-metric' = task quality on a pinned evaluation set (5c); 'conformance' = ctg-conform (OQ5)."
+          },
+          "description": {
+            "type": "string"
+          },
+          "tolerance": {
+            "type": "number",
+            "minimum": 0
+          },
+          "on_device": {
+            "type": "boolean",
+            "description": "true when the check needs the real target hardware."
+          }
+        }
+      }
+    },
+    "reference_measurements": {
+      "type": "array",
+      "description": "Optional. What the blueprint's authors measured, per target, stated as an EXPECTATION for whoever materializes. Never copied into a descriptor: a materialized cartridge reports only what was measured on its own artifacts.",
+      "items": {
+        "type": "object",
+        "required": [
+          "target",
+          "measured_on"
+        ],
+        "properties": {
+          "target": {
+            "type": "string"
+          },
+          "flavor": {
+            "type": "string"
+          },
+          "measured_on": {
+            "type": "string"
+          },
+          "performance": {
+            "type": "object"
+          },
+          "quality": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "runtime",
+        "model",
+        "weights",
+        "tokenizer",
+        "calibration",
+        "descriptor",
+        "other"
+      ],
+      "description": "Manifest artifact roles (cartridge-manifest.schema.json)."
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "role",
+        "uri",
+        "revision",
+        "files",
+        "license",
+        "redistribution"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "What steps and outputs refer to."
+        },
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "uri": {
+          "type": "string",
+          "description": "Where the publisher serves it. `hf://<org>/<repo>` for a model hub repository, otherwise an https URL. A profile MAY substitute a mirror; the digests below do not change.",
+          "examples": [
+            "hf://google/functiongemma-270m-it",
+            "https://example.org/models/tiny-streaming-en.tar.gz"
+          ]
+        },
+        "revision": {
+          "type": "string",
+          "description": "Immutable revision at the publisher: a commit id for repositories, a release identifier otherwise. A branch name or `main` is not a revision."
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "digest"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "digest": {
+                "$ref": "#/$defs/digest"
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "license": {
+          "type": "string",
+          "description": "License of the source as published — SPDX where possible, otherwise a marker (`community-restricted`, `proprietary`) or the license's name.",
+          "examples": [
+            "MIT",
+            "Apache-2.0",
+            "community-restricted",
+            "Gemma Terms of Use"
+          ]
+        },
+        "license_url": {
+          "type": "string"
+        },
+        "redistribution": {
+          "type": "string",
+          "enum": [
+            "allowed",
+            "restricted",
+            "acceptance-required"
+          ],
+          "description": "'allowed' = the license permits redistributing the file or works derived from it; 'restricted' = it does not, or only under conditions a materializer must check (revenue cap, display duty, field of use); 'acceptance-required' = the publisher makes access conditional on accepting terms — materialization MUST refuse to fetch until the profile records that acceptance."
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Exact version. Ranges are not pins."
+        },
+        "coordinates": {
+          "type": "string",
+          "description": "Where the tool comes from when it is a library or plugin.",
+          "examples": [
+            "sk.ainet.transformers:skainet-transformers-bom"
+          ]
+        },
+        "image": {
+          "type": "string",
+          "description": "Container image when the tool runs in one; SHOULD include a digest."
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "target"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "examples": [
+            "vulkan-arm64",
+            "cpu-arm64",
+            "cpu-x86-64"
+          ]
+        },
+        "cartridge_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "Id of the cartridge materialized for this target, when `<blueprint id>-<target id>` is not wanted."
+        },
+        "target": {
+          "type": "object",
+          "description": "Same shape as the descriptor's `target`.",
+          "additionalProperties": false,
+          "required": [
+            "hardware",
+            "abi"
+          ],
+          "properties": {
+            "hardware": {
+              "type": "string"
+            },
+            "abi": {
+              "type": "string"
+            },
+            "accelerator": {
+              "type": "string"
+            }
+          }
+        },
+        "requirements": {
+          "type": "object",
+          "description": "Descriptor `requirements` that hold for every cartridge built for this target."
+        },
+        "params": {
+          "type": "object",
+          "description": "Target-specific parameters steps may read (compiler backend, GPU architecture, dtype)."
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "tool",
+        "produces"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "fetch",
+            "convert",
+            "quantize",
+            "export",
+            "compile",
+            "build-runtime",
+            "measure",
+            "pack",
+            "sign"
+          ],
+          "description": "'fetch' downloads and digest-verifies sources; 'convert' changes format or layout without changing numerics beyond dtype casts; 'quantize' changes numeric precision; 'export' turns a model into a compiler input (e.g. StableHLO); 'compile' turns that into a target artifact; 'build-runtime' builds the native runtime library; 'measure' produces performance/quality on the target; 'pack' assembles the pack_dir; 'sign' signs the manifest."
+        },
+        "description": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string",
+          "description": "A key of `toolchain`."
+        },
+        "uses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of sources, inputs, or products of earlier steps."
+        },
+        "produces": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "per_target": {
+          "type": "boolean",
+          "description": "true when the step's products differ per target (compile, build-runtime, measure)."
+        },
+        "params": {
+          "type": "object"
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "role",
+        "path",
+        "derived_from"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "A step product."
+        },
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "path": {
+          "type": "string",
+          "description": "Path inside the pack_dir; by convention under `artifacts/<role>/` (ADR-012).",
+          "pattern": "^[^/].*"
+        },
+        "derived_from": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of the sources and inputs this artifact descends from — what the manifest's `derived_from` and the license computation are built from. Empty only for artifacts built purely from the blueprint's own code."
+        },
+        "flavor": {
+          "type": "string",
+          "description": "Set when the artifact exists only for one flavor."
+        }
+      }
+    }
+  }
+}

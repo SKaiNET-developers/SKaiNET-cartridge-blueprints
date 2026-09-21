@@ -1,0 +1,55 @@
+{
+  "spec_version": "0.4",
+  "kind": "materialization-profile",
+  "blueprint": {
+    "id": "nlu-functiongemma-270m-iree",
+    "version": "0.1.0",
+    "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000010",
+    "source": {
+      "coordinates": "sk.ainet.cartridge:nlu-functiongemma-270m-iree:0.1.0"
+    }
+  },
+  "target": "vulkan-arm64",
+  "cartridge": {
+    "version": "1.0.0"
+  },
+  "license_acceptance": [
+    {
+      "source": "weights",
+      "license": "Gemma Terms of Use",
+      "terms_url": "https://ai.google.dev/gemma/terms",
+      "accepted_by": "Example Org",
+      "accepted_at": "2026-09-20"
+    },
+    {
+      "source": "tokenizer",
+      "license": "Gemma Terms of Use",
+      "terms_url": "https://ai.google.dev/gemma/terms",
+      "accepted_by": "Example Org",
+      "accepted_at": "2026-09-20"
+    }
+  ],
+  "mirrors": {
+    "weights": "https://artifacts.example.org/models/functiongemma-270m-it/",
+    "tokenizer": "https://artifacts.example.org/models/functiongemma-270m-it/"
+  },
+  "inputs": {
+    "tool-catalog": {
+      "path": "inputs/tool-catalog.json",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000020",
+      "license": "proprietary"
+    }
+  },
+  "measurements": {
+    "performance": {
+      "latency_p50_ms": 5900,
+      "measured_on": "example arm64 board, Vulkan, run 2026-09-20",
+      "methodology": "bench/README.md#per-utterance"
+    }
+  },
+  "signing": {
+    "keyid": "example-org-cartridges-2026",
+    "signer": "Example Org build service",
+    "key_ref": "CARTRIDGE_SIGNING_KEY"
+  }
+}
