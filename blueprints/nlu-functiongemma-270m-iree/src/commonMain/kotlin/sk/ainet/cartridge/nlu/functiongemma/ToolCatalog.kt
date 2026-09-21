@@ -7,8 +7,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import kotlinx.io.files.Path
 import sk.ainet.apps.kllama.chat.ToolDefinition
-import java.io.File
 
 /** One argument of a function: JSON-Schema type, description, optional closed value set. */
 @Serializable
@@ -77,7 +77,7 @@ public data class ToolCatalog(
 
         public fun parse(text: String): ToolCatalog = json.decodeFromString(serializer(), text)
 
-        public fun load(file: File): ToolCatalog = parse(file.readText())
+        public fun load(file: Path): ToolCatalog = parse(PackDir.readText(file))
 
         private fun normalize(s: String): String = s.lowercase().replace(Regex("[^a-z0-9_]"), "").replace(Regex("_+"), "_")
 

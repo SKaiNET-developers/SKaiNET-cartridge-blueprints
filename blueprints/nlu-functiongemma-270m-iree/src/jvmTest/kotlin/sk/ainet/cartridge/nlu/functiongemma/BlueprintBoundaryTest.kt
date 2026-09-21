@@ -26,7 +26,7 @@ class BlueprintBoundaryTest {
     @Test
     fun `the cartridge code contains no catalog of its own`() {
         // Which functions exist is the host's knowledge. The only catalog in this repository is the toy sample.
-        val main = File(dir, "src/main").walkTopDown().filter { it.extension == "kt" }.toList()
+        val main = File(dir, "src").walkTopDown().filter { it.extension == "kt" && it.path.contains("Main") }.toList()
         val offenders = main.filter { f -> Regex("""ToolFunction\(\s*"|"functions"\s*:""").containsMatchIn(f.readText()) }
         assertTrue(offenders.isEmpty(), "main sources must not define functions: $offenders")
         assertEquals(listOf("toy-catalog.json", "toy-golden.json"), File(dir, "samples").list()!!.sorted())
@@ -36,7 +36,7 @@ class BlueprintBoundaryTest {
     fun `no application, device or organization vocabulary`() {
         // ("session" is absent from the list on purpose: it names the runtime's KV session.)
         val terms = Regex("""(?i)\b(intent|command[-_ ]?assembler|fleet|customer|tenant)\b""")
-        val hits = File(dir, "src/main").walkTopDown().filter { it.extension == "kt" }.flatMap { f ->
+        val hits = File(dir, "src").walkTopDown().filter { it.extension == "kt" && it.path.contains("Main") }.flatMap { f ->
             f.readLines().mapIndexedNotNull { i, line -> if (terms.containsMatchIn(line)) "${f.name}:${i + 1}: ${line.trim()}" else null }
         }.toList()
         assertTrue(hits.isEmpty(), hits.joinToString("\n"))

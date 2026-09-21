@@ -2,46 +2,56 @@ import sk.ainet.cartridge.blueprint.gradle.HostGatherTask
 import sk.ainet.cartridge.blueprint.gradle.IreeCompileTask
 import sk.ainet.cartridge.blueprint.gradle.IreeConvertParametersTask
 
-// Blueprint: function-calling NLU with FunctionGemma 270M on Android (IREE, Vulkan or CPU).
+// Blueprint: function-calling NLU with FunctionGemma 270M (IREE, Vulkan or CPU).
 //
-// Two things live here. (1) The cartridge's Kotlin API — an Android library with NO model in it. (2) The recipe:
-// the tasks below are the `steps` of blueprint.json, registered as named products for `materializeCartridge`.
+// Two things live here. (1) The cartridge's Kotlin API — a Kotlin Multiplatform library with NO model in it:
+// contract, tool catalog, prompt and the whole resolve loop in commonMain, a thin runtime binding per platform.
+// (2) The recipe: the tasks below are the `steps` of blueprint.json, registered as named products for
+// `materializeCartridge`.
 //
 //   ./gradlew :blueprints:nlu-functiongemma-270m-iree:materializeCartridge -Pprofile=profiles/<yours>.json
 plugins {
-    alias(libs.plugins.androidLibrary)
-    alias(libs.plugins.kotlinAndroid)
+    alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.kotlinSerialization)
     id("sk.ainet.cartridge.blueprint")
 }
 
 kotlin {
     explicitApi()
-    compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
-}
 
-android {
-    namespace = "sk.ainet.cartridge.nlu.functiongemma"
-    compileSdk = libs.versions.androidCompileSdk.get().toInt()
-    defaultConfig { minSdk = libs.versions.androidMinSdk.get().toInt() }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+    // Same target set as the Moonshine cartridge modules, plus Android. Every target compiles the full API and the
+    // engine; a *runtime binding* exists where SKaiNET-transformers ships the KV-session runtime — today: Android.
+    android {
+        namespace = "sk.ainet.cartridge.nlu.functiongemma"
+        compileSdk = libs.versions.androidCompileSdk.get().toInt()
+        minSdk = libs.versions.androidMinSdk.get().toInt()
+        compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
     }
-    testOptions { unitTests.isReturnDefaultValues = true }
-}
+    jvm { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
+    linuxX64()
+    linuxArm64()
+    macosArm64()
 
-dependencies {
-    implementation(platform(libs.transformers.bom))
-    implementation(libs.transformers.core)                  // Tokenizer / TokenizerFactory
-    implementation(libs.transformers.agent)                 // ChatMessage, ToolDefinition, ToolCall
-    implementation(libs.transformers.runtime.gemma.iree)    // FunctionGemmaOfficialChatTemplate + tool-call parser
-    api(libs.transformers.runtime.iree.android)             // IreeKvSession + libskainet_iree_kv.so (both ABIs)
-    implementation(libs.skainet.io.core)
-    implementation(libs.skainet.io.gguf)
-    implementation(libs.kotlinx.serialization.json)
-
-    testImplementation(kotlin("test-junit"))
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project.dependencies.platform(libs.transformers.bom))
+            implementation(libs.transformers.agent)               // ChatMessage, ToolDefinition, ToolCall
+            implementation(libs.transformers.runtime.gemma.iree)  // FunctionGemmaOfficialChatTemplate + tool-call parser
+            implementation(libs.kotlinx.serialization.json)
+            api(libs.kotlinx.io.core)                             // kotlinx.io.files.Path is part of the public API (PackDir)
+        }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+        }
+        androidMain.dependencies {
+            implementation(project.dependencies.platform(libs.transformers.bom))
+            implementation(libs.transformers.core)                // TokenizerFactory
+            api(libs.transformers.runtime.iree.android)           // IreeKvSession + libskainet_iree_kv.so (both ABIs)
+            implementation(libs.skainet.io.core)                  // AndroidRandomAccessSource
+            implementation(libs.skainet.io.gguf)                  // StreamingGGUFReader
+        }
+    }
 }
 
 tasks.withType<Test>().configureEach {

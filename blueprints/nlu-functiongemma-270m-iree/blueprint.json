@@ -3,7 +3,7 @@
   "kind": "blueprint",
   "id": "nlu-functiongemma-270m-iree",
   "version": "0.1.0",
-  "description": "Function-calling NLU on Android: FunctionGemma 270M, exported by SKaiNET-transformers to StableHLO under the KV-cache contract (prefill-at + prefill-with-past + with-past, host-gathered embeddings), compiled with IREE for Vulkan or CPU. The tool catalog is an input: the functions a model may call belong to the host.",
+  "description": "Function-calling NLU: FunctionGemma 270M, exported by SKaiNET-transformers to StableHLO under the KV-cache contract (prefill-at + prefill-with-past + with-past, host-gathered embeddings), compiled with IREE for Vulkan or CPU. The tool catalog is an input: the functions a model may call belong to the host.",
   "license": "MIT",
   "descriptor_template": {
     "family": "functiongemma-270m-tool-calling",

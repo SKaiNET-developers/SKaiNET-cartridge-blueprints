@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 class ToolCatalogTest {
     private val dir = File(System.getProperty("blueprint.dir"))
-    private val toy = ToolCatalog.load(File(dir, "samples/toy-catalog.json"))
+    private val toy = ToolCatalog.load(kotlinx.io.files.Path(dir.path, "samples/toy-catalog.json"))
 
     @Test
     fun `the toy catalog loads and becomes tool definitions`() {

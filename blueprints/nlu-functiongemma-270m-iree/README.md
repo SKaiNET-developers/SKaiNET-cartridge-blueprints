@@ -1,6 +1,6 @@
 # Blueprint: `nlu-functiongemma-270m-iree`
 
-Function-calling NLU on Android: **FunctionGemma 270M**, exported to StableHLO by SKaiNET-transformers under a
+Function-calling NLU: **FunctionGemma 270M**, exported to StableHLO by SKaiNET-transformers under a
 KV-cache contract and compiled with IREE for a Vulkan GPU or the CPU. One transcript in, one function call out.
 
 This directory is a [cartridge blueprint](https://skainet-developers.github.io/SKaiNET-cartridge/skainet-cartridge/blueprints.html):
@@ -13,6 +13,7 @@ catalog**. You materialize it into a cartridge with *your* profile.
 | Weights | `unsloth/functiongemma-270m-it-GGUF` @ `1de0f7fc…`, `functiongemma-270m-it-Q8_0.gguf` (291 558 624 bytes, `sha256:8a17a4ed…`) — a Q8_0 GGUF of `google/functiongemma-270m-it` |
 | Weights license | **Gemma Terms of Use** — <https://ai.google.dev/gemma/terms>. Not an OSI license. Verified on the model card 2026-09-21 (`license: gemma`, repository not gated; the base model is gated). The blueprint marks the source `acceptance-required`: nothing is downloaded until your profile records that you accepted the terms. |
 | Code license | MIT |
+| Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, catalog, prompt and the resolve loop are common code; a **runtime binding exists for Android** (see *Platforms*) |
 | Targets | `vulkan-armv7` (IREE `vulkan-spirv`, `valhall4`), `cpu-armv7` (IREE `llvm-cpu`, arm32) — Android `armeabi-v7a` |
 | Tool catalog | an **input** you supply ([schema](schema/tool-catalog.schema.json)); [`samples/toy-catalog.json`](samples/toy-catalog.json) is a three-function toy |
 | Toolchain | SKaiNET 0.56.0, SKaiNET-transformers 0.56.0, IREE tools 3.11.0 |
@@ -35,7 +36,7 @@ About 2.2 GB. It is side-loaded or delivered as an asset pack — never put into
 
 ## Prerequisites
 
-- JDK 21+, Git; Android SDK (`ANDROID_HOME`) with platform 36 — the API is an Android library.
+- JDK 21+, Git; Android SDK (`ANDROID_HOME`) with platform 36 — one of the API's targets is Android.
 - Docker, for the two *IREE tools (StableHLO → IREE)* steps. Equivalent plain IREE commands are given below.
 - ~10 GB free disk and 8 GB of heap for the export.
 - You have read the [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and the prohibited-use policy.
@@ -184,11 +185,13 @@ export CARTRIDGE_SIGNING_KEY="$(cat ~/keys/my-dev-key.pem)"      # openssl genpk
 ## Step 8 — Use it from an app
 
 ```kotlin
-dependencies { implementation("sk.ainet.cartridge:nlu-functiongemma-270m-iree:0.1.0") }   // code only
+dependencies { implementation("sk.ainet.cartridge:nlu-functiongemma-270m-iree:0.1.0") }   // code only, no model
 ```
 
+Android:
+
 ```kotlin
-val pack = PackDir(File(filesDir, "nlu-functiongemma"))          // or PackDir.fromAssets(context, "nlu-functiongemma")
+val pack = PackDir(File(filesDir, "nlu-functiongemma").path)     // or FunctionGemmaNluCartridge.packFromAssets(context, "nlu-functiongemma")
 FunctionGemmaNluCartridge(pack, cacheDir = cacheDir).use { nlu ->
     nlu.warmUp()                                                  // once: prefill + snapshot of the catalog prefix
     when (val r = nlu.resolve("turn the lamp off", budgetMs = 8_000)) {
@@ -201,6 +204,29 @@ FunctionGemmaNluCartridge(pack, cacheDir = cacheDir).use { nlu ->
 
 The cartridge returns a function name and string arguments from *your* catalog. Turning that into an application
 action is the host's job and never part of a cartridge.
+
+## Platforms
+
+The library is Kotlin Multiplatform and shaped like the Moonshine cartridge modules: what a cartridge *is* lives
+in common code, what *runs* it is a thin binding.
+
+| Source set | Content |
+|---|---|
+| `commonMain` | `NluToolCallCartridge` / `NluResolution` (the contract) · `ToolCatalog` (JSON, name snapping) · `FunctionGemmaPrompt` (prefix / utterance split over the released chat template) · `PackDir` (kotlinx-io paths) · **`FunctionGemmaEngine`** — warm-up, snapshot/restore, chunking, greedy decode, stop tokens, prose cut-off, budget, parsing — against three small interfaces: `KvBackend`, `NluTokenizer`, `PrefixIdCache` |
+| `androidMain` | `FunctionGemmaNluCartridge`: `KvBackend` over SKaiNET-transformers' released `IreeKvSession` (`libskainet_iree_kv.so`), the GGUF tokenizer, `packFromAssets`, call serialization |
+| `jvm`, `linuxX64`, `linuxArm64`, `macosArm64` | compile and test the full API and engine (the engine tests run natively on Linux). **No runtime binding yet** — see below. |
+
+Two gaps, both upstream in SKaiNET-transformers and recorded rather than papered over:
+
+- The **KV-session contract** this cartridge decodes against (`prefill-at` once + snapshot, `prefill-with-past`
+  chunks, `with-past` steps, host-gathered embeddings) is implemented only by the Android JNI runtime. The native
+  decoder in `runtime-gemma-iree` runs a different, one-shot contract through files. A `KvBackend` for Linux/macOS
+  needs that runtime to expose the same session API; a desktop JVM runtime does not exist.
+- `runtime-gemma-iree` — home of the chat template and the tool-call parser — publishes no Android variant; the
+  Android target consumes its JVM variant. It works; an explicit target would be cleaner.
+
+To bring your own runtime on another platform today, implement `KvBackend` and construct `FunctionGemmaEngine`
+directly — that is all the Android binding does.
 
 ## Reproducibility
 

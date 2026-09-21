@@ -9,7 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class PromptSplitTest {
-    private val catalog = ToolCatalog.load(File(System.getProperty("blueprint.dir"), "samples/toy-catalog.json"))
+    private val catalog = ToolCatalog.load(kotlinx.io.files.Path(System.getProperty("blueprint.dir"), "samples/toy-catalog.json"))
 
     @Test
     fun `prefix plus utterance equals the one-shot rendering`() {
