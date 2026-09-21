@@ -1,0 +1,8 @@
+[versions]
+kotlin = "2.4.10"
+kotlinxSerializationJson = "1.11.0"
+jsonSchemaValidator = "0.5.5"
+
+[libraries]
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+optimumcode-json-schema-validator = { module = "io.github.optimumcode:json-schema-validator", version.ref = "jsonSchemaValidator" }

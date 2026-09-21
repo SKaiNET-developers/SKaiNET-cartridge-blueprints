@@ -1,0 +1,45 @@
+# macOS
+.DS_Store
+
+# Editors / IDEs
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.iml
+*.swp
+
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+build/
+local.properties
+
+# Antora
+.cache/
+docs/.cache/
+docs/build/
+
+# Local drafts
+.drafts/
+
+# A blueprint never carries weights, compiled models or built runtimes (spec: blueprints.adoc,
+# "A blueprint MUST NOT"). Test fixtures that need one of these extensions are added with `git add -f`
+# and must be tiny and synthetic.
+*.safetensors
+*.gguf
+*.onnx
+*.ort
+*.vmfb
+*.irpa
+*.mlir
+*.so
+*.dylib
+*.dll
+materialized/
+
+# Environment and keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
