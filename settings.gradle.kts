@@ -18,10 +18,12 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
+        // Opt-in for developing against an unreleased SKaiNET / SKaiNET-transformers snapshot; never the default.
+        if (providers.gradleProperty("useMavenLocal").orNull == "true") mavenLocal()
     }
 }
 
 rootProject.name = "SKaiNET-cartridge-blueprints"
 
 include(":blueprints:nlu-functiongemma-270m-iree")
-// Next: include(":blueprints:asr-moonshine-v2-streaming-iree")
+include(":blueprints:asr-moonshine-v2-streaming-iree")

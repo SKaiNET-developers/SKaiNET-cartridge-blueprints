@@ -3,7 +3,7 @@ kotlin = "2.4.10"
 kotlinxSerializationJson = "1.11.0"
 jsonSchemaValidator = "0.5.5"
 skainet = "0.56.0"
-transformers = "0.56.0"
+transformers = "0.56.1"
 agp = "9.4.1"
 androidCompileSdk = "36"
 androidMinSdk = "29"
@@ -22,6 +22,7 @@ transformers-core = { module = "sk.ainet.transformers:skainet-transformers-core"
 transformers-agent = { module = "sk.ainet.transformers:skainet-transformers-agent" }
 transformers-runtime-gemma-iree = { module = "sk.ainet.transformers:skainet-transformers-runtime-gemma-iree" }
 transformers-runtime-iree-android = { module = "sk.ainet.transformers:skainet-transformers-runtime-iree-android" }
+transformers-inference-moonshine = { module = "sk.ainet.transformers:skainet-transformers-inference-moonshine" }
 transformers-inference-functiongemma = { module = "sk.ainet.transformers:skainet-transformers-inference-functiongemma", version.ref = "transformers" }
 skainet-io-core = { module = "sk.ainet.core:skainet-io-core", version.ref = "skainet" }
 skainet-io-gguf = { module = "sk.ainet.core:skainet-io-gguf", version.ref = "skainet" }
