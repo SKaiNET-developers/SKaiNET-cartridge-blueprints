@@ -23,6 +23,7 @@ Normative text: [Blueprints](https://skainet-developers.github.io/SKaiNET-cartri
 |---|---|---|
 | [`blueprint-gradle-plugin/`](blueprint-gradle-plugin/) | Gradle plugin `sk.ainet.cartridge.blueprint` — the materializer | core working, see below |
 | [`blueprints/nlu-functiongemma-270m-iree/`](blueprints/nlu-functiongemma-270m-iree/) | Function-calling NLU, FunctionGemma 270M — Kotlin Multiplatform API (runtime binding: Android), recipe, step-by-step guide (weights: Gemma Terms of Use, acceptance required) | recipe verified step by step; end-to-end materialization needs your license acceptance |
+| [`blueprints/asr-moonshine-v2-streaming-iree/`](blueprints/asr-moonshine-v2-streaming-iree/) | Streaming speech-to-text, Moonshine v2 tiny en + de — Kotlin Multiplatform API (runtime binding: Android), recipe, step-by-step guide (weights: MIT) | German flavor materialized end to end, signed, verified on a device against the previous build |
 | `blueprints/asr-moonshine-v2-streaming-iree/` | Streaming ASR, Moonshine v2 tiny, en + de (weights: MIT) | planned |
 | `docs/` | Model-specific guides: download, convert, quantize, compile | planned |
 

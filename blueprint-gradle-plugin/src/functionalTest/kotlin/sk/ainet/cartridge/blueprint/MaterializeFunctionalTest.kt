@@ -35,9 +35,17 @@ class MaterializeFunctionalTest {
                 doLast { out.get().asFile.apply { parentFile.mkdirs() }.writeBytes(byteArrayOf(0x7f, 0x45, 0x4c, 0x46)) }
             }
 
+            // A flavor-scoped product: its task must run only when the profile selects the flavor.
+            val bakeDe = tasks.register("bakeDe") {
+                val out = layout.buildDirectory.file("de/extra.bin")
+                outputs.file(out)
+                doLast { out.get().asFile.apply { parentFile.mkdirs() }.writeBytes(byteArrayOf(9)) }
+            }
+
             blueprint {
                 product("graphs", compileGraphs.map { layout.buildDirectory.dir("graphs").get() })
                 product("runtime-so", buildRuntime.map { layout.buildDirectory.file("runtime/libtoy-ctg.so").get() })
+                product("de-extra", bakeDe.map { layout.buildDirectory.file("de/extra.bin").get() }, flavor = "de")
             }
             """.trimIndent(),
         )
@@ -72,6 +80,16 @@ class MaterializeFunctionalTest {
         // Left on disk on purpose: CI verifies this manifest with the spec's verify_manifest.py.
         println("PACK_DIR=${pack.path}")
         println("PUBLIC_KEY=${File(f.root, "signing-key.pub").path}")
+    }
+
+    @Test
+    fun `a flavor's step tasks are scheduled only when the profile selects the flavor`() {
+        val fOff = Fixture(withGermanFlavor = true)
+        val off = runner(project(fOff), "materializeCartridge", "-Pprofile=${fOff.profileFile.path}").build()
+        assertTrue(off.task(":bakeDe") == null, "unselected flavor: its task must not be in the graph")
+        val fOn = Fixture(withGermanFlavor = true, selectFlavors = listOf("de"))
+        val on = runner(project(fOn), "materializeCartridge", "-Pprofile=${fOn.profileFile.path}").build()
+        assertEquals(TaskOutcome.SUCCESS, on.task(":bakeDe")!!.outcome)
     }
 
     @Test

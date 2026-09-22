@@ -22,6 +22,12 @@ object DescriptorResolver {
         return profile.cartridge.id ?: target.cartridgeId ?: "${blueprint.id}-${target.id}"
     }
 
+    /** The descriptor schema's explicit "not measured" form: `unmeasured` plus which harness would measure it. */
+    private val UNMEASURED_QUALITY: JsonObject = buildJsonObject {
+        put("unmeasured", JsonPrimitive(true))
+        put("harness", JsonPrimitive("none run at materialization — supply measurements.quality in the profile"))
+    }
+
     fun resolve(blueprint: Blueprint, profile: Profile, effectiveLicense: String): JsonObject {
         val target = blueprint.target(profile.target)
         val measurements = profile.measurements
@@ -41,7 +47,9 @@ object DescriptorResolver {
         fields["target"] = target.target
         target.requirements?.let { fields["requirements"] = it }
         fields["performance"] = performance
-        measurements.quality?.let { fields["quality"] = it }
+        // The descriptor schema requires `quality`. Unmeasured is a legitimate, explicit state (the spec's honesty
+        // rule) — what is never legitimate is a number that was not measured on these artifacts.
+        fields["quality"] = measurements.quality ?: UNMEASURED_QUALITY
         profile.descriptorOverrides?.forEach { (k, v) -> fields[k] = v }
 
         val flavors = blueprint.flavors.filter { it.id in profile.flavors }.map { flavor ->
@@ -53,7 +61,20 @@ object DescriptorResolver {
                 m?.quality?.let { put("quality", it) }
             }
         }
-        if (flavors.isNotEmpty()) fields["flavors"] = JsonArray(flavors)
+        if (flavors.isNotEmpty()) {
+            fields["flavors"] = JsonArray(flavors)
+            // What the pack as a whole offers is the union of its flavors: attributes.languages at the top level
+            // lists every selected flavor's languages, so a loader can pick a flavor without reading them all.
+            val languages = flavors.flatMap { f ->
+                (f["attributes"] as? JsonObject)?.get("languages")?.let { it as? JsonArray }?.map { it } ?: emptyList()
+            }.distinct()
+            if (languages.isNotEmpty()) {
+                val attrs = (fields["attributes"] as? JsonObject)?.toMutableMap() ?: LinkedHashMap()
+                val existing = (attrs["languages"] as? JsonArray)?.toList() ?: emptyList()
+                attrs["languages"] = JsonArray((existing + languages).distinct())
+                fields["attributes"] = JsonObject(attrs)
+            }
+        }
 
         val descriptor = JsonObject(fields)
         SpecSchema.DESCRIPTOR.require(descriptor, "The resolved descriptor for ${fields["id"]}")

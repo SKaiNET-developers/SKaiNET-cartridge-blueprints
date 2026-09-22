@@ -1,0 +1,571 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "asr-moonshine-v2-streaming-iree",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Streaming speech-to-text: Moonshine v2 tiny (English, German) on IREE, Vulkan or CPU. Five self-compiled SKaiNET-DSL graphs driven by a streaming runtime: partial transcripts while you speak, an exact final at the end of the utterance.",
+  "descriptor_template": {
+    "family": "moonshine-v2-streaming",
+    "execution_mode": "native",
+    "model": {
+      "name": "moonshine-streaming-tiny",
+      "variant": "iree-fp32-streaming",
+      "params": 27000000,
+      "checkpoint": "moonshine-ai/moonshine-streaming-tiny",
+      "upstream": {
+        "source": "https://huggingface.co/moonshine-ai",
+        "license": "MIT"
+      }
+    },
+    "modality": "audio",
+    "task": "asr",
+    "io": {
+      "mode": "streaming",
+      "input": {
+        "dtype": "float32-pcm",
+        "shape": [
+          null
+        ],
+        "sample_rate_hz": 16000,
+        "chunk_ms": 80
+      },
+      "output": {
+        "dtype": "utf8-text",
+        "shape": [
+          null
+        ]
+      }
+    },
+    "attributes": {
+      "streaming": true,
+      "languages": [],
+      "state_model": "session",
+      "partials": "cumulative, prefix-stable within an utterance; the final re-decodes exactly",
+      "max_utterance_s": 5.12,
+      "window_frames": 64,
+      "hop_ms": 880,
+      "weights": "fp32 (graphs and parameter archive)",
+      "runtime_hint": {
+        "runtime": "iree",
+        "version": "3.11.0",
+        "contract": "moonshine-v2-streaming-v1 (frontend + encoder + adapter + masked prefill + dynamic with_past, shared parameter archive, host-side embedding rows and detokenizer table)"
+      }
+    }
+  },
+  "sources": [
+    {
+      "name": "weights-en",
+      "role": "weights",
+      "uri": "hf://moonshine-ai/moonshine-streaming-tiny",
+      "revision": "f8e9dfd8c562c257c151a907b7b7f2fe8ff8511a",
+      "files": [
+        {
+          "path": "config.json",
+          "digest": "sha256:166861753adaf928ae99b3709bfb1da47cb76319be58f37c6f9b7a539ce371f0",
+          "size": 1421
+        },
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:0ab3443dabd95a4afb35f0a26155428c03b7c3c450fa6923ffdac4510ba3d040",
+          "size": 176237308
+        },
+        {
+          "path": "tokenizer.json",
+          "digest": "sha256:28bbc54a47dfa33673affa26010f23ac452685b18c76e81451d9b3ea25a54d54",
+          "size": 1676069
+        }
+      ],
+      "license": "MIT",
+      "license_url": "https://huggingface.co/moonshine-ai/moonshine-streaming-tiny/blob/f8e9dfd8c562c257c151a907b7b7f2fe8ff8511a/README.md",
+      "redistribution": "allowed"
+    },
+    {
+      "name": "weights-de",
+      "role": "weights",
+      "uri": "hf://moonshine-ai/moonshine-streaming-tiny-de",
+      "revision": "928bfb925992902b7e187fda7921d72114142e1f",
+      "files": [
+        {
+          "path": "config.json",
+          "digest": "sha256:6c49ec398e57e1c3146c77772089287746fe3f6209ad2579c70bc8e8eb304424",
+          "size": 1495
+        },
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:c507ab76d07e1b904e620ff508f766f7f75fa78c8c0783b8165e258f5143ac45",
+          "size": 108079716
+        },
+        {
+          "path": "tokenizer.json",
+          "digest": "sha256:983ec5f1b76300b74be6a764edc034a16e2912c38a8a8c0e4d51af355b6b755d",
+          "size": 588216
+        }
+      ],
+      "license": "MIT",
+      "license_url": "https://huggingface.co/moonshine-ai/moonshine-streaming-tiny-de/blob/928bfb925992902b7e187fda7921d72114142e1f/README.md",
+      "redistribution": "allowed"
+    }
+  ],
+  "toolchain": {
+    "skainet": {
+      "version": "0.56.0",
+      "coordinates": "sk.ainet:skainet-bom"
+    },
+    "skainet-transformers": {
+      "version": "0.56.1",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-inference-moonshine",
+      "description": "MoonshineV2ExportCli: Hugging Face snapshot -> StableHLO graphs + tables (Kotlin)"
+    },
+    "iree-tools": {
+      "version": "3.11.0",
+      "image": "skainet/iree-compiler:3.11.0",
+      "description": "IREE tools (StableHLO -> IREE): iree-compile with parameter export"
+    },
+    "iree-android-runtime": {
+      "version": "0.56.2",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-runtime-iree-android",
+      "description": "libskainet_moonshine_stream.so + IreeMoonshineStream, built and published by SKaiNET-transformers from llm-runtime/iree-android/native"
+    },
+    "blueprint-plugin": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.blueprint"
+    }
+  },
+  "targets": [
+    {
+      "id": "vulkan-armv7",
+      "target": {
+        "hardware": "IREE-armeabi-v7a",
+        "abi": "armeabi-v7a",
+        "accelerator": "Vulkan GPU (valhall4)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 1024,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "vulkan",
+        "iree_target": "valhall4",
+        "device": "vulkan"
+      }
+    },
+    {
+      "id": "cpu-armv7",
+      "target": {
+        "hardware": "IREE-armeabi-v7a",
+        "abi": "armeabi-v7a"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 1024,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "arm32",
+        "device": "local-task"
+      }
+    },
+    {
+      "id": "vulkan-arm64",
+      "target": {
+        "hardware": "IREE-arm64-v8a",
+        "abi": "arm64-v8a",
+        "accelerator": "Vulkan GPU (valhall4)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 1024,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "vulkan",
+        "iree_target": "valhall4",
+        "device": "vulkan"
+      }
+    },
+    {
+      "id": "cpu-arm64",
+      "target": {
+        "hardware": "IREE-arm64-v8a",
+        "abi": "arm64-v8a"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 1024,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "arm64",
+        "device": "local-task"
+      }
+    }
+  ],
+  "flavors": [
+    {
+      "id": "en",
+      "sources": [
+        "weights-en"
+      ],
+      "descriptor_overrides": {
+        "attributes": {
+          "languages": [
+            "en"
+          ]
+        },
+        "model": {
+          "name": "moonshine-streaming-tiny",
+          "variant": "iree-fp32-streaming-en",
+          "params": 27000000,
+          "checkpoint": "moonshine-ai/moonshine-streaming-tiny"
+        }
+      }
+    },
+    {
+      "id": "de",
+      "sources": [
+        "weights-de"
+      ],
+      "descriptor_overrides": {
+        "attributes": {
+          "languages": [
+            "de"
+          ]
+        },
+        "model": {
+          "checkpoint": "moonshine-ai/moonshine-streaming-tiny-de",
+          "name": "moonshine-streaming-tiny",
+          "variant": "iree-fp32-streaming-de",
+          "params": 27000000
+        }
+      }
+    }
+  ],
+  "inputs": [],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "weights-en",
+        "weights-de"
+      ],
+      "produces": [
+        "weights-en-files",
+        "weights-de-files"
+      ],
+      "description": "SKaiNET data-source: hf:// at the pinned revision, SHA-256 verified. Only the selected flavors are fetched."
+    },
+    {
+      "id": "export",
+      "kind": "export",
+      "tool": "skainet-transformers",
+      "uses": [
+        "weights-en-files",
+        "weights-de-files"
+      ],
+      "produces": [
+        "en-frontend-mlir",
+        "en-encoder-mlir",
+        "en-adapter-mlir",
+        "en-prefill-mlir",
+        "en-with-past-mlir",
+        "en-dec-embed",
+        "en-vocab",
+        "de-frontend-mlir",
+        "de-encoder-mlir",
+        "de-adapter-mlir",
+        "de-prefill-mlir",
+        "de-with-past-mlir",
+        "de-dec-embed",
+        "de-vocab"
+      ],
+      "description": "Kotlin (MoonshineV2ExportCli): Hugging Face snapshot -> frontend, encoder, adapter, prefill, with_past StableHLO graphs (weights folded), dec_embed.bin, vocab.bin. Geometry and per-layer attention bands come from the checkpoint. Runs once per selected flavor.",
+      "params": {
+        "env": {
+          "MOONSHINE_FE_SAMPLES": "21760",
+          "MOONSHINE_ENC_FRAMES": "64",
+          "MOONSHINE_MAX_MEM": "256"
+        },
+        "note": "The shapes are the runtime's compiled-in streaming geometry: 68 frontend frames (64 + 4 left context), a 64-frame encoder window, a 256-frame (5.12 s) padded decoder memory."
+      }
+    },
+    {
+      "id": "parameters",
+      "kind": "convert",
+      "tool": "iree-tools",
+      "uses": [
+        "en-prefill-mlir",
+        "de-prefill-mlir"
+      ],
+      "produces": [
+        "en-params-irpa",
+        "de-params-irpa"
+      ],
+      "description": "iree-compile --iree-opt-export-parameters=model=params.irpa on the prefill graph: the decoder weights as one parameter archive, shared by prefill and step (byte-identical from either) and independent of the target. Runs once per selected flavor."
+    },
+    {
+      "id": "compile",
+      "kind": "compile",
+      "tool": "iree-tools",
+      "uses": [
+        "en-frontend-mlir",
+        "en-encoder-mlir",
+        "en-adapter-mlir",
+        "en-prefill-mlir",
+        "en-with-past-mlir",
+        "de-frontend-mlir",
+        "de-encoder-mlir",
+        "de-adapter-mlir",
+        "de-prefill-mlir",
+        "de-with-past-mlir"
+      ],
+      "produces": [
+        "en-frontend-vmfb",
+        "en-encoder-vmfb",
+        "en-adapter-vmfb",
+        "en-prefill-vmfb",
+        "en-step-vmfb",
+        "de-frontend-vmfb",
+        "de-encoder-vmfb",
+        "de-adapter-vmfb",
+        "de-prefill-vmfb",
+        "de-step-vmfb"
+      ],
+      "description": "StableHLO -> .vmfb for the target: frontend, encoder, adapter with weights embedded; prefill and step referencing the parameter archive under scope `model`. Runs once per selected flavor.",
+      "per_target": true
+    },
+    {
+      "id": "build-runtime",
+      "kind": "build-runtime",
+      "tool": "iree-android-runtime",
+      "produces": [
+        "runtime-so"
+      ],
+      "per_target": true,
+      "description": "libskainet_moonshine_stream.so for the target ABI, taken from the released SKaiNET-transformers Android runtime AAR (built there from llm-runtime/iree-android/native)."
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "blueprint-plugin",
+      "description": "descriptor.json + manifest.json + artifacts/<role>/<language>/… (cartridge spec pack_dir).",
+      "produces": [
+        "pack-dir"
+      ],
+      "uses": [
+        "runtime-so",
+        "en-frontend-vmfb",
+        "en-encoder-vmfb",
+        "en-adapter-vmfb",
+        "en-prefill-vmfb",
+        "en-step-vmfb",
+        "en-params-irpa",
+        "en-dec-embed",
+        "en-vocab",
+        "de-frontend-vmfb",
+        "de-encoder-vmfb",
+        "de-adapter-vmfb",
+        "de-prefill-vmfb",
+        "de-step-vmfb",
+        "de-params-irpa",
+        "de-dec-embed",
+        "de-vocab"
+      ]
+    },
+    {
+      "id": "sign",
+      "kind": "sign",
+      "tool": "blueprint-plugin",
+      "description": "Ed25519 over the canonical manifest, key from the profile.",
+      "produces": [
+        "manifest"
+      ],
+      "uses": [
+        "pack-dir"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "from": "runtime-so",
+      "role": "runtime",
+      "path": "artifacts/runtime/libskainet_moonshine_stream.so",
+      "derived_from": []
+    },
+    {
+      "from": "en-frontend-vmfb",
+      "role": "model",
+      "path": "artifacts/model/en/frontend.vmfb",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-encoder-vmfb",
+      "role": "model",
+      "path": "artifacts/model/en/encoder.vmfb",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-adapter-vmfb",
+      "role": "model",
+      "path": "artifacts/model/en/adapter.vmfb",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-prefill-vmfb",
+      "role": "model",
+      "path": "artifacts/model/en/prefill.vmfb",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-step-vmfb",
+      "role": "model",
+      "path": "artifacts/model/en/step.vmfb",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-params-irpa",
+      "role": "weights",
+      "path": "artifacts/weights/en/params.irpa",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-dec-embed",
+      "role": "weights",
+      "path": "artifacts/weights/en/dec_embed.bin",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-vocab",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/en/vocab.bin",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "de-frontend-vmfb",
+      "role": "model",
+      "path": "artifacts/model/de/frontend.vmfb",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-encoder-vmfb",
+      "role": "model",
+      "path": "artifacts/model/de/encoder.vmfb",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-adapter-vmfb",
+      "role": "model",
+      "path": "artifacts/model/de/adapter.vmfb",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-prefill-vmfb",
+      "role": "model",
+      "path": "artifacts/model/de/prefill.vmfb",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-step-vmfb",
+      "role": "model",
+      "path": "artifacts/model/de/step.vmfb",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-params-irpa",
+      "role": "weights",
+      "path": "artifacts/weights/de/params.irpa",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-dec-embed",
+      "role": "weights",
+      "path": "artifacts/weights/de/dec_embed.bin",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-vocab",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/de/vocab.bin",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    }
+  ],
+  "reference_measurements": [
+    {
+      "target": "vulkan-armv7",
+      "flavor": "de",
+      "measured_on": "arm32 Android device with a Mali GPU (Vulkan), IREE 3.11, 80 ms chunks",
+      "performance": {
+        "engine_init_s": 3.2,
+        "first_partial_s": 0.79,
+        "final_after_last_chunk_s": 0.87,
+        "streaming_rtf": 1.33,
+        "note": "an expectation for whoever materializes, never copied into a descriptor"
+      }
+    }
+  ]
+}
