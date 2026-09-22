@@ -94,17 +94,51 @@ abstract class IreeCompileTask @Inject constructor(exec: ExecOperations) : IreeT
     @get:Input abstract val backend: Property<String>
     @get:Input abstract val target: Property<String>
     @get:Input @get:Optional abstract val extraArgs: ListProperty<String>
+    /**
+     * When set, the module's constant weights are left OUT of the `.vmfb` and referenced as parameters under this
+     * scope (`--iree-opt-export-parameters=<scope>=…`) — the archive itself comes from [IreeExportParametersTask].
+     * The compile then runs `iree-compile` directly with the flags the image's `compile-vulkan` / `compile-cpu`
+     * wrappers use, since the wrappers do not pass the flag through.
+     */
+    @get:Input @get:Optional abstract val parameterScope: Property<String>
 
     @TaskAction
     fun run() {
-        val sub = when (backend.get()) {
-            "vulkan" -> "compile-vulkan"
-            "cpu" -> "compile-cpu"
-            else -> throw GradleException("IreeCompileTask.backend must be 'vulkan' or 'cpu', got '${backend.get()}'")
+        val be = backend.get()
+        if (be != "vulkan" && be != "cpu") throw GradleException("IreeCompileTask.backend must be 'vulkan' or 'cpu', got '$be'")
+        val scope = parameterScope.orNull
+        if (scope == null) {
+            runInContainer(input.get().asFile, output.get().asFile, entrypoint = null) { i, o ->
+                listOf(if (be == "vulkan") "compile-vulkan" else "compile-cpu", i, "--out", o, "--target", target.get()) + extraArgs.getOrElse(emptyList())
+            }
+            return
+        }
+        // Same flags as the image's wrappers (skainet/iree-compiler entrypoint.sh), plus the parameter export; the
+        // archive path is a scratch file — the real archive is produced once by IreeExportParametersTask.
+        val backendFlags: String = when (be) {
+            "vulkan" -> "--iree-hal-target-backends=vulkan-spirv --iree-vulkan-target=${target.get()}"
+            else -> when (target.get()) {
+                "host" -> "--iree-hal-target-backends=llvm-cpu"
+                "arm32" -> cpuFlags("armv7a-linux-androideabi29", "cortex-a55", "+neon", "--iree-llvmcpu-stack-allocation-limit=1048576")
+                "arm64" -> cpuFlags("aarch64-linux-android29", "cortex-a76", "+v8.2a,+dotprod", "")
+                else -> throw GradleException("IreeCompileTask.target must be host|arm32|arm64 for backend=cpu, got '${target.get()}'")
+            }
         }
         runInContainer(input.get().asFile, output.get().asFile, entrypoint = null) { i, o ->
-            listOf(sub, i, "--out", o, "--target", target.get()) + extraArgs.getOrElse(emptyList())
+            val extra = extraArgs.getOrElse(emptyList()).joinToString(" ")
+            listOf("shell", "-c", "set -e; iree-compile $i $backendFlags --iree-opt-export-parameters=$scope=/out/.${output.get().asFile.nameWithoutExtension}.scratch.irpa $extra -o $o")
         }
+    }
+
+    private fun cpuFlags(triple: String, cpu: String, features: String, more: String): String {
+        // The clang wrapper the image's compile-cpu creates on the fly: IREE calls the system linker without --target.
+        // Written next to the output (mounted at /out) so the container can execute it.
+        val wrapper = File(output.get().asFile.parentFile.apply { mkdirs() }, ".linker-$triple.sh")
+        wrapper.writeText("#!/bin/sh\nexec clang --target=$triple -fuse-ld=lld \"$@\"\n")
+        wrapper.setExecutable(true)
+        return "--iree-hal-target-backends=llvm-cpu --iree-llvmcpu-link-embedded=false --iree-llvmcpu-link-static=false " +
+            "--iree-llvmcpu-system-linker-path=/out/${wrapper.name} --iree-llvmcpu-target-triple=$triple --iree-llvmcpu-target-cpu=$cpu " +
+            "--iree-llvmcpu-target-cpu-features=$features $more"
     }
 }
 
@@ -122,3 +156,25 @@ abstract class IreeConvertParametersTask @Inject constructor(exec: ExecOperation
         }
     }
 }
+
+/**
+ * `convert`: the weights an exported StableHLO module carries as constants → an IREE parameter archive
+ * (`iree-compile --iree-opt-export-parameters=<scope>=<out>`). The archive does not depend on the HAL target, so
+ * it is produced once (with a host CPU compile whose `.vmfb` is discarded) and shared by every target and by
+ * every graph exported from the same weights — graphs that share weights produce byte-identical archives.
+ * The modules compiled for the device then reference the archive by [scope] instead of embedding the weights.
+ */
+abstract class IreeExportParametersTask @Inject constructor(exec: ExecOperations) : IreeToolsTask(exec) {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
+    @get:OutputFile abstract val output: RegularFileProperty
+    /** Parameter scope the archive is written under; `model` by convention. */
+    @get:Input abstract val scope: Property<String>
+
+    @TaskAction
+    fun run() {
+        runInContainer(input.get().asFile, output.get().asFile, entrypoint = null) { i, o ->
+            listOf("compile", "--", i, "--iree-hal-target-backends=llvm-cpu", "--iree-opt-export-parameters=${scope.get()}=$o", "-o", "/out/.${output.get().asFile.nameWithoutExtension}-host.vmfb")
+        }
+    }
+}
+

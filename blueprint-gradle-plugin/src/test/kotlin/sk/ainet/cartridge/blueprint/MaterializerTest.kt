@@ -256,6 +256,16 @@ class MaterializerTest {
     }
 
     @Test
+    fun `quality is unmeasured unless the profile measured it, and the pack lists its flavors' languages`() {
+        val de = materialize(Fixture(withGermanFlavor = true, selectFlavors = listOf("de")))
+        val quality = de.descriptor["quality"]!!.jsonObject
+        assertEquals(true, quality["unmeasured"]!!.jsonPrimitive.content.toBoolean())
+        assertTrue("harness" in quality)
+        // The fixture's flavor overrides attributes.languages to ["de"]; the top level must list it too.
+        assertEquals(listOf("en", "de"), de.descriptor["attributes"]!!.jsonObject["languages"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    @Test
     fun `a profile for another blueprint version is refused`() {
         val f = Fixture()
         f.profileFile.writeText(f.profileFile.readText().replace(""""version":"0.1.0"""", """"version":"0.2.0""""))
