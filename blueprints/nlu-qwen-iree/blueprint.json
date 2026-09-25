@@ -1,0 +1,433 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "nlu-qwen-iree",
+  "version": "0.1.0",
+  "description": "Function-calling NLU with Qwen instruct models, one flavor per checkpoint: exported by SKaiNET-transformers to StableHLO under the qwen-kv-v1 KV-cache contract (prefill-at + prefill-with-past + with-past, grouped-query attention, host-gathered embeddings), compiled with IREE for Vulkan or CPU. The tool catalog is an input: the functions a model may call belong to the host.",
+  "license": "MIT",
+  "descriptor_template": {
+    "family": "qwen-instruct-tool-calling",
+    "execution_mode": "native",
+    "model": {
+      "name": "qwen-instruct",
+      "variant": "iree-bf16-kv-chunk32"
+    },
+    "modality": "text",
+    "task": "nlu",
+    "io": {
+      "mode": "batch",
+      "input": {
+        "dtype": "utf8-text",
+        "shape": [
+          null
+        ]
+      },
+      "output": {
+        "dtype": "utf8-json",
+        "shape": [
+          null
+        ],
+        "output_schema": {
+          "type": "object",
+          "required": [
+            "name",
+            "arguments"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "arguments": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "attributes": {
+      "supports_tool_calling": true,
+      "tool_call_format": "hermes-json-v1",
+      "thinking": false,
+      "context_window_tokens": 1024,
+      "assistant_prefix": "<tool_call>\\n{\"name\": \"",
+      "weights": "bf16 parameter archives (one per graph), f32 compute; dequantized from the Q8_0 GGUF at export",
+      "runtime_hint": {
+        "runtime": "iree",
+        "version": "3.11.0",
+        "contract": "qwen-kv-v1 (prefill_at + prefill_with_past + with_past, grouped-query attention, head-shared chunk mask, host-gathered embeddings)",
+        "chunk": 32,
+        "library": "libskainet_iree_kv.so"
+      }
+    },
+    "requirements": {
+      "memory_mb": 3072,
+      "os": {
+        "name": "android",
+        "min_api": 29
+      }
+    }
+  },
+  "sources": [
+    {
+      "name": "weights-qwen3-600m",
+      "role": "weights",
+      "uri": "hf://Qwen/Qwen3-0.6B-GGUF",
+      "revision": "23749fefcc72300e3a2ad315e1317431b06b590a",
+      "files": [
+        {
+          "path": "Qwen3-0.6B-Q8_0.gguf",
+          "digest": "sha256:9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
+          "size": 639446688
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_url": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/blob/23749fefcc72300e3a2ad315e1317431b06b590a/LICENSE",
+      "redistribution": "allowed"
+    }
+  ],
+  "toolchain": {
+    "skainet": {
+      "version": "0.57.0",
+      "coordinates": "sk.ainet:skainet-bom"
+    },
+    "skainet-transformers": {
+      "version": "0.57.0",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-inference-qwen",
+      "description": "QwenExportCli: GGUF -> the three qwen-kv-v1 StableHLO modules + external parameters + manifest.json (Kotlin)"
+    },
+    "iree-tools": {
+      "version": "3.11.0",
+      "image": "skainet/iree-compiler:3.11.0",
+      "description": "IREE tools (StableHLO -> IREE): iree-compile, iree-convert-parameters"
+    },
+    "iree-android-runtime": {
+      "version": "0.57.0",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-runtime-iree-android",
+      "description": "libskainet_iree_kv.so (grouped-query attention, head-shared chunk mask), built and published by SKaiNET-transformers from llm-runtime/iree-android/native"
+    },
+    "blueprint-plugin": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.blueprint"
+    }
+  },
+  "targets": [
+    {
+      "id": "vulkan-armv7",
+      "target": {
+        "hardware": "IREE-armeabi-v7a",
+        "abi": "armeabi-v7a",
+        "accelerator": "Vulkan GPU (valhall4)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 3072,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "vulkan",
+        "iree_target": "valhall4",
+        "suffix": "valhall4",
+        "device": "vulkan"
+      }
+    },
+    {
+      "id": "cpu-armv7",
+      "target": {
+        "hardware": "IREE-armeabi-v7a",
+        "abi": "armeabi-v7a"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 3072,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "arm32",
+        "suffix": "arm32",
+        "device": "local-task"
+      }
+    }
+  ],
+  "flavors": [
+    {
+      "id": "qwen3-600m",
+      "sources": [
+        "weights-qwen3-600m"
+      ],
+      "description": "Qwen3-0.6B (28 layers, 16 query / 8 key-value heads, head dim 128, QK-norm), thinking disabled.",
+      "descriptor_overrides": {
+        "model": {
+          "name": "qwen3-0.6b",
+          "variant": "iree-bf16-kv-chunk32",
+          "params": 596000000,
+          "checkpoint": "Qwen/Qwen3-0.6B",
+          "upstream": {
+            "source": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF",
+            "license": "Apache-2.0"
+          }
+        },
+        "attributes": {
+          "chat_template": "qwen3-no-thinking"
+        }
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "name": "tool-catalog",
+      "role": "other",
+      "required": true,
+      "schema": "schema/tool-catalog.schema.json",
+      "description": "The functions the model may call, with their argument schemas. Host- or organization-specific by nature; this repository ships only a toy catalog for trying things out (samples/toy-catalog.json)."
+    }
+  ],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "weights-qwen3-600m"
+      ],
+      "produces": [
+        "weights-qwen3-600m-gguf"
+      ],
+      "description": "SKaiNET data-source: hf:// at the pinned revision, SHA-256 verified."
+    },
+    {
+      "id": "export",
+      "kind": "export",
+      "tool": "skainet-transformers",
+      "uses": [
+        "weights-qwen3-600m-gguf"
+      ],
+      "produces": [
+        "qwen3-600m-with-past-mlir",
+        "qwen3-600m-prefill-with-past-mlir",
+        "qwen3-600m-prefill-at-mlir",
+        "qwen3-600m-with-past-safetensors",
+        "qwen3-600m-prefill-with-past-safetensors",
+        "qwen3-600m-prefill-at-safetensors",
+        "qwen3-600m-manifest"
+      ],
+      "description": "Kotlin: one run per flavor traces the three qwen-kv-v1 graphs to StableHLO and writes the manifest the runtime reads its architecture from; weights stay external, dequantized Q8_0 -> bf16.",
+      "params": {
+        "env": {
+          "QWEN_GRAPH": "all",
+          "QWEN_SEQ": "1024",
+          "QWEN_CHUNK": "32",
+          "QWEN_DTYPE": "bf16",
+          "QWEN_HOST_GATHER": "0"
+        }
+      }
+    },
+    {
+      "id": "host-gather",
+      "kind": "convert",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "qwen3-600m-with-past-mlir",
+        "qwen3-600m-prefill-with-past-mlir",
+        "qwen3-600m-prefill-at-mlir"
+      ],
+      "produces": [
+        "qwen3-600m-with-past-hostgather-mlir",
+        "qwen3-600m-prefill-with-past-hostgather-mlir",
+        "qwen3-600m-prefill-at-hostgather-mlir"
+      ],
+      "description": "Replace the token-embedding gather with an %emb argument; the runtime reads embedding rows from the archive. Numerics unchanged."
+    },
+    {
+      "id": "parameters",
+      "kind": "convert",
+      "tool": "iree-tools",
+      "uses": [
+        "qwen3-600m-with-past-safetensors",
+        "qwen3-600m-prefill-with-past-safetensors",
+        "qwen3-600m-prefill-at-safetensors"
+      ],
+      "produces": [
+        "qwen3-600m-with-past-irpa",
+        "qwen3-600m-prefill-with-past-irpa",
+        "qwen3-600m-prefill-at-irpa"
+      ],
+      "description": "iree-convert-parameters: safetensors -> .irpa, scope `model`. Format change only."
+    },
+    {
+      "id": "compile",
+      "kind": "compile",
+      "tool": "iree-tools",
+      "uses": [
+        "qwen3-600m-with-past-hostgather-mlir",
+        "qwen3-600m-prefill-with-past-hostgather-mlir",
+        "qwen3-600m-prefill-at-hostgather-mlir"
+      ],
+      "produces": [
+        "qwen3-600m-with-past-vmfb",
+        "qwen3-600m-prefill-with-past-vmfb",
+        "qwen3-600m-prefill-at-vmfb"
+      ],
+      "per_target": true,
+      "description": "iree-compile for the target's backend: vulkan-spirv (--iree-vulkan-target) or llvm-cpu."
+    },
+    {
+      "id": "runtime",
+      "kind": "build-runtime",
+      "tool": "iree-android-runtime",
+      "produces": [
+        "runtime-so"
+      ],
+      "per_target": true,
+      "description": "The KV-session JNI library for the target ABI, taken from the published SKaiNET-transformers Android runtime (its source: llm-runtime/iree-android/native)."
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "qwen3-600m-with-past-vmfb",
+        "qwen3-600m-prefill-with-past-vmfb",
+        "qwen3-600m-prefill-at-vmfb",
+        "qwen3-600m-with-past-irpa",
+        "qwen3-600m-prefill-with-past-irpa",
+        "qwen3-600m-prefill-at-irpa",
+        "qwen3-600m-manifest",
+        "runtime-so",
+        "weights-qwen3-600m-gguf",
+        "tool-catalog"
+      ],
+      "produces": [
+        "pack-dir"
+      ]
+    },
+    {
+      "id": "sign",
+      "kind": "sign",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "pack-dir"
+      ],
+      "produces": [
+        "manifest"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "from": "runtime-so",
+      "role": "runtime",
+      "path": "artifacts/runtime/libskainet_iree_kv.so",
+      "derived_from": []
+    },
+    {
+      "from": "qwen3-600m-with-past-vmfb",
+      "role": "model",
+      "path": "artifacts/model/qwen3-600m/qwen-with-past.vmfb",
+      "derived_from": [
+        "weights-qwen3-600m"
+      ],
+      "flavor": "qwen3-600m"
+    },
+    {
+      "from": "qwen3-600m-prefill-with-past-vmfb",
+      "role": "model",
+      "path": "artifacts/model/qwen3-600m/qwen-prefill-with-past.vmfb",
+      "derived_from": [
+        "weights-qwen3-600m"
+      ],
+      "flavor": "qwen3-600m"
+    },
+    {
+      "from": "qwen3-600m-prefill-at-vmfb",
+      "role": "model",
+      "path": "artifacts/model/qwen3-600m/qwen-prefill-at.vmfb",
+      "derived_from": [
+        "weights-qwen3-600m"
+      ],
+      "flavor": "qwen3-600m"
+    },
+    {
+      "from": "qwen3-600m-with-past-irpa",
+      "role": "weights",
+      "path": "artifacts/weights/qwen3-600m/qwen-with-past.irpa",
+      "derived_from": [
+        "weights-qwen3-600m"
+      ],
+      "flavor": "qwen3-600m"
+    },
+    {
+      "from": "qwen3-600m-prefill-with-past-irpa",
+      "role": "weights",
+      "path": "artifacts/weights/qwen3-600m/qwen-prefill-with-past.irpa",
+      "derived_from": [
+        "weights-qwen3-600m"
+      ],
+      "flavor": "qwen3-600m"
+    },
+    {
+      "from": "qwen3-600m-prefill-at-irpa",
+      "role": "weights",
+      "path": "artifacts/weights/qwen3-600m/qwen-prefill-at.irpa",
+      "derived_from": [
+        "weights-qwen3-600m"
+      ],
+      "flavor": "qwen3-600m"
+    },
+    {
+      "from": "qwen3-600m-manifest",
+      "role": "other",
+      "path": "artifacts/other/qwen3-600m/manifest.json",
+      "derived_from": [
+        "weights-qwen3-600m"
+      ],
+      "flavor": "qwen3-600m"
+    },
+    {
+      "from": "weights-qwen3-600m-gguf",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/qwen3-600m/Qwen3-0.6B-Q8_0.gguf",
+      "derived_from": [
+        "weights-qwen3-600m"
+      ],
+      "flavor": "qwen3-600m"
+    },
+    {
+      "from": "tool-catalog",
+      "role": "other",
+      "path": "artifacts/other/tool-catalog.json",
+      "derived_from": [
+        "tool-catalog"
+      ]
+    }
+  ],
+  "verification": [
+    {
+      "id": "host-gather-shape",
+      "kind": "parity",
+      "description": "Each rewritten module takes %emb with exactly the type the removed gather produced; numerics are unchanged by construction.",
+      "tolerance": 0
+    },
+    {
+      "id": "host-vmfb-greedy",
+      "kind": "parity",
+      "description": "The exported graphs, compiled for llvm-cpu host and driven like the native session (prefill-at, one chunk call, decode steps), reproduce mainline llama.cpp's greedy tokens exactly: SKaiNET-transformers QwenVmfbParityTest (qwen3-600m: 32 of 32 tokens, evidence record llm-inference/qwen/validation/L3-qwen3-06b-host-vmfb.json).",
+      "tolerance": 0
+    },
+    {
+      "id": "toy-catalog-calls",
+      "kind": "golden",
+      "description": "With samples/toy-catalog.json: the fixed utterances in samples/toy-golden.json parse to the expected function names on the target.",
+      "on_device": true
+    }
+  ]
+}
