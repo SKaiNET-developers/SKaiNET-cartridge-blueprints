@@ -14,7 +14,7 @@ catalog**. You materialize it into a cartridge with *your* profile.
 | Weights license | **Gemma Terms of Use** — <https://ai.google.dev/gemma/terms>. Not an OSI license. Verified on the model card 2026-09-21 (`license: gemma`, repository not gated; the base model is gated). The blueprint marks the source `acceptance-required`: nothing is downloaded until your profile records that you accepted the terms. |
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, catalog, prompt and the resolve loop are common code; a **runtime binding exists for Android** (see *Platforms*) |
-| Targets | `vulkan-armv7` (IREE `vulkan-spirv`, `valhall4`), `cpu-armv7` (IREE `llvm-cpu`, arm32) — Android `armeabi-v7a` |
+| Targets | `vulkan-armv7` (IREE `vulkan-spirv`, `valhall4`), `cpu-armv7` (IREE `llvm-cpu`, arm32) — Android `armeabi-v7a`; `vulkan-arm64` (`vulkan-spirv`, `valhall4`), `cpu-arm64` (`llvm-cpu`, aarch64) — Android `arm64-v8a` |
 | Tool catalog | an **input** you supply ([schema](schema/tool-catalog.schema.json)); [`samples/toy-catalog.json`](samples/toy-catalog.json) is a three-function toy |
 | Toolchain | SKaiNET 0.56.0, SKaiNET-transformers 0.56.0, IREE tools 3.11.0 |
 

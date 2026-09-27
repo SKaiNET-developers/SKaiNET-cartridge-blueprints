@@ -162,6 +162,49 @@
         "suffix": "arm32",
         "device": "local-task"
       }
+    },
+    {
+      "id": "vulkan-arm64",
+      "target": {
+        "hardware": "IREE-arm64-v8a",
+        "abi": "arm64-v8a",
+        "accelerator": "Vulkan GPU (valhall4)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 2048,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "vulkan",
+        "iree_target": "valhall4",
+        "suffix": "valhall4",
+        "device": "vulkan"
+      }
+    },
+    {
+      "id": "cpu-arm64",
+      "target": {
+        "hardware": "IREE-arm64-v8a",
+        "abi": "arm64-v8a"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 2048,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "arm64",
+        "suffix": "arm64",
+        "device": "local-task"
+      }
     }
   ],
   "inputs": [

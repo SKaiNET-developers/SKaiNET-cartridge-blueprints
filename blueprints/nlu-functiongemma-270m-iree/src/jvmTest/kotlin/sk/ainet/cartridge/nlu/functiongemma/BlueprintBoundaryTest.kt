@@ -56,6 +56,22 @@ class BlueprintBoundaryTest {
     }
 
     @Test
+    fun `every target names an Android ABI and a complete compile contract`() {
+        val bp = Json.parseToJsonElement(File(dir, "blueprint.json").readText()).jsonObject
+        val targets = bp.getValue("targets").jsonArray.map { it.jsonObject }
+        assertEquals(listOf("vulkan-armv7", "cpu-armv7", "vulkan-arm64", "cpu-arm64"), targets.map { it.getValue("id").jsonPrimitive.content })
+        for (t in targets) {
+            val id = t.getValue("id").jsonPrimitive.content
+            val abi = t.getValue("target").jsonObject.getValue("abi").jsonPrimitive.content
+            assertTrue(abi in setOf("armeabi-v7a", "arm64-v8a"), "$id: abi must be an Android ABI the runtime AAR ships, got '$abi'")
+            val params = t.getValue("params").jsonObject
+            for (k in listOf("backend", "iree_target", "suffix", "device")) assertTrue(k in params, "$id: params.$k drives the compile step")
+            val accelerated = t.getValue("requirements").jsonObject.getValue("needs_accelerator").jsonPrimitive.content == "true"
+            assertEquals(accelerated, "accelerator" in t.getValue("target").jsonObject, "$id: needs_accelerator and target.accelerator must agree")
+        }
+    }
+
+    @Test
     fun `the example profile accepts no license and claims no measurement`() {
         for (p in File(dir, "profiles").listFiles { f -> f.extension == "json" }!!) {
             val profile = Json.parseToJsonElement(p.readText()).jsonObject
