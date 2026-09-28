@@ -14,7 +14,7 @@ catalog**. You materialize it into a cartridge with *your* profile.
 | Weights license | **Gemma Terms of Use** — <https://ai.google.dev/gemma/terms>. Not an OSI license. Verified on the model card 2026-09-21 (`license: gemma`, repository not gated; the base model is gated). The blueprint marks the source `acceptance-required`: nothing is downloaded until your profile records that you accepted the terms. |
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, catalog, prompt and the resolve loop are common code; a **runtime binding exists for Android** (see *Platforms*) |
-| Targets | `vulkan-armv7` (IREE `vulkan-spirv`, `valhall4`), `cpu-armv7` (IREE `llvm-cpu`, arm32) — Android `armeabi-v7a` |
+| Targets | `vulkan-armv7` (IREE `vulkan-spirv`, `valhall4`), `cpu-armv7` (IREE `llvm-cpu`, arm32) — Android `armeabi-v7a`; `vulkan-arm64` (`vulkan-spirv`, `valhall4`), `cpu-arm64` (`llvm-cpu`, aarch64) — Android `arm64-v8a` |
 | Tool catalog | an **input** you supply ([schema](schema/tool-catalog.schema.json)); [`samples/toy-catalog.json`](samples/toy-catalog.json) is a three-function toy |
 | Toolchain | SKaiNET 0.56.0, SKaiNET-transformers 0.56.0, IREE tools 3.11.0 |
 
@@ -264,3 +264,51 @@ cartridge built from it replaces one built before 0.56.0.
 | `IREE tools failed` | The image is not available: use the plain IREE commands above. |
 | `catalog … does not fit the prefill graph (1024)` | The rendered catalog is too long; shorten descriptions or export `prefill-at` with a larger `GEN_SEQ`. |
 | Wrong tokens on the CPU target | f32 archives on arm32 — keep the recipe's bf16. |
+
+## FunctionGemma Integration and Licensing
+
+This blueprint integrates with Google's **FunctionGemma (`google/functiongemma-270m-it`)** model.
+
+The source code of this blueprint — the Kotlin API, the recipe and the tooling — is licensed under the **MIT License**. The MIT License applies only to the software and source code contained in this repository.
+
+### Model weights are not distributed
+
+This repository does **not** include, redistribute, sublicense, or package any FunctionGemma model weights.
+
+Instead, the blueprint contains the recipe that lets a materialization download the required model files separately from their distribution source on Hugging Face — the Q8_0 GGUF conversion `unsloth/functiongemma-270m-it-GGUF` of
+
+`google/functiongemma-270m-it`
+
+pinned by revision and SHA-256 in `blueprint.json`. Nothing is downloaded until the materialization profile records that the person or organization building the cartridge accepted the terms (`license_acceptance`).
+
+The FunctionGemma model, model weights, and related Google materials are separate third-party components and are **not covered by this repository's MIT License**.
+
+### Gemma Terms of Use
+
+FunctionGemma is provided by Google and is subject to the **Gemma Terms of Use** and applicable Gemma usage policies.
+
+Users who download or use FunctionGemma are responsible for reviewing and complying with the applicable Google terms:
+
+https://ai.google.dev/gemma/terms
+
+Official FunctionGemma model page:
+
+https://huggingface.co/google/functiongemma-270m-it
+
+Downloading or using FunctionGemma through this blueprint does not grant any additional rights to the model beyond those provided by Google under the applicable Gemma terms. A cartridge materialized from this blueprint carries the effective license `MIT AND LicenseRef-Gemma-Terms-of-Use` in its descriptor and manifest; whoever ships it accepts the terms and the prohibited-use policy.
+
+### Separation of licenses
+
+In summary:
+
+- **This blueprint's source code:** MIT License
+- **FunctionGemma model and model weights:** Google Gemma Terms of Use
+- **FunctionGemma weights included in this repository:** None
+
+The FunctionGemma model is obtained separately by the materializing party from its external distribution source and remains subject to its original terms.
+
+### Third-party components
+
+Other third-party libraries, models, and dependencies used by this blueprint may be subject to their own licenses and terms. Users are responsible for complying with the applicable licenses for those components.
+
+This project is not affiliated with, endorsed by, or sponsored by Google. Google, Gemma, and related names may be trademarks of their respective owners.
