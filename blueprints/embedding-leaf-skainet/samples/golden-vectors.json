@@ -1,0 +1,12 @@
+{
+  "space_fingerprint": "mdbr-leaf-ir-v1",
+  "model": "MongoDB/mdbr-leaf-ir@4262131b32c3182bd06e67e92ae69d7bd66e0c5c",
+  "note": "These bytes define the space (first 8 of 768 dims per case, JVM reference). Any drift is a new space fingerprint and a full corpus re-embed.",
+  "cases": [
+    {"text": "which JEP introduced virtual threads", "dimensions": 768, "vector_prefix": [0.073538415, -0.0078527415, 0.10580704, -0.017541848, 0.041230984, 0.020081475, 0.030237941, 0.0560397]},
+    {"text": "Virtual Threads is an API change in Java 21, specified by JEP 444.", "dimensions": 768, "vector_prefix": [0.099036366, 0.009893688, 0.10623513, -0.077831745, 0.047325425, -0.0015890392, 0.07922801, 0.056192916]},
+    {"text": "Class files compiled for Java 8 carry major version 52.0.", "dimensions": 768, "vector_prefix": [0.011190697, 0.017022572, 0.03868603, 0.009751211, 0.09829194, -0.0025691048, 0.045268014, 0.03995983]}
+  ],
+  "cosine_query_doc": 0.8088875148370067,
+  "cosine_query_unrelated": 0.6737758847823009
+}
