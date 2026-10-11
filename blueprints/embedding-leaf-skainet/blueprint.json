@@ -1,0 +1,249 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "embedding-leaf-skainet",
+  "version": "0.1.0",
+  "description": "MongoDB mdbr-leaf-ir sentence embeddings (768-d, retrieval-tuned, symmetric) on SKaiNET-transformers' commonMain BERT path in eager mode: WordPiece tokenize -> 6-layer BERT (384 hidden) -> mean pooling -> sentence-transformers 2_Dense projection 384->768 -> L2 normalization, the checkpoint's exact modules.json stack, on a path upstream verifies against sentence-transformers. The first neural task 'embedding' blueprint; it implements the embedding/v1 task profile (profiles/embedding-v1) alongside the llm-api EmbeddingModel SPI with one engine class. Targets are jvm (Android consumes the jvm artifact) and macos-arm64; iOS waits only on upstream publishing iosArm64 klibs for skainet-transformers-inference-bert - eager mode itself is iOS-clean, no dlopen anywhere.",
+  "license": "MIT",
+  "descriptor_template": {
+    "family": "bert-sentence-embedding",
+    "execution_mode": "eager",
+    "modality": "text",
+    "task": "embedding",
+    "model": {
+      "name": "mdbr-leaf-ir",
+      "variant": "bert-6l-384h-mean-dense768-fp32",
+      "params": 23000000
+    },
+    "io": {
+      "mode": "batch",
+      "input": {
+        "dtype": "utf8-text",
+        "shape": [
+          null
+        ]
+      },
+      "output": {
+        "dtype": "float32",
+        "shape": [
+          768
+        ]
+      }
+    },
+    "attributes": {
+      "embedding_dimensions": 768,
+      "normalized": true,
+      "space_fingerprint": "mdbr-leaf-ir-v1",
+      "query_prefix": "",
+      "document_prefix": "",
+      "pooling": "mean",
+      "deterministic": true,
+      "max_sequence_tokens": 512,
+      "runtime_hint": {
+        "runtime": "skainet-transformers",
+        "version": "0.57.1",
+        "execution": "eager",
+        "note": "No role:runtime artifact. Eager execution of the BERT DSL network on the SKaiNET CPU backend (jdk.incubator.vector on JVM, Accelerate on Apple targets); the Kotlin library compiled per target is the runtime. Golden verification budgets 2e-3 per dimension across backends."
+      }
+    },
+    "requirements": {
+      "memory_mb": 256
+    }
+  },
+  "sources": [
+    {
+      "name": "mdbr-leaf-ir",
+      "role": "weights",
+      "uri": "https://huggingface.co/MongoDB/mdbr-leaf-ir",
+      "revision": "4262131b32c3182bd06e67e92ae69d7bd66e0c5c",
+      "files": [
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:82691b5531ec8323546aa2246f8a5de073aff3bd0d7d98bec0619d2e51ee1297",
+          "size": 90272656
+        },
+        {
+          "path": "2_Dense/model.safetensors",
+          "digest": "sha256:b3e7c0e1ef65e39a5ef1ca3bc5e4aef5feafb6e204bd161503145ed062f12c69",
+          "size": 1182880
+        },
+        {
+          "path": "config.json",
+          "digest": "sha256:258407cfa27c7e1e502a9c312abebb4f5241bf226972ffc366287f370a3567f1",
+          "size": 829
+        },
+        {
+          "path": "1_Pooling/config.json",
+          "digest": "sha256:b4105bf48c5257a542a7e1968cef220b3ecd49ae24943143279650c4ac6e30a0",
+          "size": 321
+        },
+        {
+          "path": "2_Dense/config.json",
+          "digest": "sha256:95727b5a377737b5df1b579e28d716d1587201ce2130e41820fca7142feddde7",
+          "size": 137
+        },
+        {
+          "path": "vocab.txt",
+          "digest": "sha256:07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3",
+          "size": 231508
+        }
+      ],
+      "license": "Apache-2.0",
+      "redistribution": "allowed"
+    }
+  ],
+  "toolchain": {
+    "skainet-transformers": {
+      "version": "0.57.1",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-bom",
+      "description": "inference-bert (encoder, tokenizer, config parsing) and llm-api (EmbeddingModel SPI)"
+    },
+    "skainet": {
+      "version": "0.57.0",
+      "coordinates": "sk.ainet:skainet-bom",
+      "description": "CPU backend, safetensors loader, random-access file sources"
+    },
+    "embedding-v1": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.profiles:embedding-v1",
+      "description": "The graduated embedding/v1 task profile contract (this repository, profiles/embedding-v1)"
+    },
+    "blueprint-plugin": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.blueprint"
+    }
+  },
+  "targets": [
+    {
+      "id": "jvm",
+      "target": {
+        "hardware": "any JVM 21 host",
+        "accelerator": "none (SIMD via jdk.incubator.vector when offered)",
+        "abi": "jvm-bytecode-21"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 256
+      }
+    },
+    {
+      "id": "android-arm64",
+      "target": {
+        "hardware": "arm64 Android device",
+        "abi": "arm64-v8a",
+        "accelerator": "none"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 256,
+        "os": {
+          "name": "android",
+          "min_api": 26
+        }
+      }
+    },
+    {
+      "id": "macos-arm64",
+      "target": {
+        "hardware": "Apple Silicon Mac",
+        "accelerator": "Accelerate (ARM NEON + AMX) via the SKaiNET CPU backend",
+        "abi": "arm64-apple-macos"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 256,
+        "os": {
+          "name": "macos",
+          "min_api": 13
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "description": "Downloads the pinned Hugging Face snapshot (revision + sha256 per file above) into the shared SKaiNET model cache (~/.cache/skainet/models/MongoDB_mdbr-leaf-ir), the same location BertEmbeddingModel.fromHuggingFace populates on JVM.",
+      "tool": "hf-snapshot-fetch",
+      "produces": [
+        "snapshot"
+      ]
+    },
+    {
+      "id": "goldens",
+      "kind": "measure",
+      "description": "Regenerates the golden parity vectors (samples/golden-vectors.json) through the loaded encoder on JVM and fails on any drift: the space fingerprint mdbr-leaf-ir-v1 is defined by these bytes. commonTest re-asserts them per target within the 2e-3 cross-backend budget.",
+      "tool": "gradle:jvmTest -PregenerateGoldens=true",
+      "uses": [
+        "snapshot"
+      ],
+      "produces": [
+        "goldens"
+      ]
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "sk.ainet.cartridge.blueprint:materializeCartridge",
+      "uses": [
+        "snapshot",
+        "goldens"
+      ],
+      "produces": [
+        "pack"
+      ]
+    },
+    {
+      "id": "sign",
+      "kind": "sign",
+      "tool": "sk.ainet.cartridge.blueprint:materializeCartridge",
+      "uses": [
+        "pack"
+      ],
+      "produces": [
+        "signed-pack"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "from": "snapshot",
+      "role": "weights",
+      "path": "artifacts/model.safetensors",
+      "derived_from": [
+        "mdbr-leaf-ir"
+      ]
+    },
+    {
+      "from": "snapshot",
+      "role": "weights",
+      "path": "artifacts/2_Dense/model.safetensors",
+      "derived_from": [
+        "mdbr-leaf-ir"
+      ]
+    },
+    {
+      "from": "snapshot",
+      "role": "tokenizer",
+      "path": "artifacts/vocab.txt",
+      "derived_from": [
+        "mdbr-leaf-ir"
+      ]
+    },
+    {
+      "from": "goldens",
+      "role": "calibration",
+      "path": "calibration/golden-vectors.json",
+      "derived_from": [
+        "mdbr-leaf-ir"
+      ]
+    }
+  ],
+  "verification": [
+    {
+      "kind": "golden",
+      "description": "samples/golden-vectors.json pins embed() outputs (8-dim prefixes of 768) and the query/document/unrelated cosine structure for three fixed inputs; commonTest asserts them on every compiled target within 2e-3 per dimension, so the jdk.incubator.vector and Accelerate backends provably share one embedding space.",
+      "id": "golden-space"
+    }
+  ]
+}
