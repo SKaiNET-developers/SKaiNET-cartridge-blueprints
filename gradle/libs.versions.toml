@@ -16,6 +16,7 @@ skainet-data-source = { module = "sk.ainet.core:skainet-data-source", version.re
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinxIo" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 optimumcode-json-schema-validator = { module = "io.github.optimumcode:json-schema-validator", version.ref = "jsonSchemaValidator" }
 transformers-bom = { module = "sk.ainet.transformers:skainet-transformers-bom", version.ref = "transformers" }
 transformers-core = { module = "sk.ainet.transformers:skainet-transformers-core" }
