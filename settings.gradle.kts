@@ -27,3 +27,4 @@ rootProject.name = "SKaiNET-cartridge-blueprints"
 
 include(":blueprints:nlu-functiongemma-270m-iree")
 include(":blueprints:asr-moonshine-v2-streaming-iree")
+include(":blueprints:nlu-qwen-iree")
