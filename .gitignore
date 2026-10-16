@@ -26,6 +26,8 @@ docs/build/
 # "A blueprint MUST NOT"). Test fixtures that need one of these extensions are added with `git add -f`
 # and must be tiny and synthetic.
 *.safetensors
+*.pt
+*.pth
 *.gguf
 *.onnx
 *.ort

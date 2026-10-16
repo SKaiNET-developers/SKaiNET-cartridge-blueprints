@@ -24,6 +24,7 @@ kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotl
 kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinxIo" }
 audio-mel = { module = "sk.ainet.audio:audio-mel", version.ref = "skainetAudio" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 optimumcode-json-schema-validator = { module = "io.github.optimumcode:json-schema-validator", version.ref = "jsonSchemaValidator" }
 transformers-bom = { module = "sk.ainet.transformers:skainet-transformers-bom", version.ref = "transformers" }
 transformers-core = { module = "sk.ainet.transformers:skainet-transformers-core" }
