@@ -126,10 +126,11 @@ for ((name, env) in graphs) {
         scope.set("model")
     }
 
-    // compile — StableHLO → .vmfb for the profile's target.
+    // compile — StableHLO → .vmfb for the profile's target. A target may name its own compiler (params.toolchain):
+    // SL26xx boards need the Torq-fork compiler, whose runtime rejects upstream-IREE modules.
     val compile = tasks.register<IreeCompileTask>("compile$task") {
         group = "cartridge blueprint steps"
-        image.set(selected.map { it.image("iree-tools") })
+        image.set(selected.map { it.image(it.params["toolchain"] ?: "iree-tools") })
         input.set(hostGather.flatMap { it.output })
         backend.set(selected.map { it.param("backend") })
         target.set(selected.map { it.param("iree_target") })

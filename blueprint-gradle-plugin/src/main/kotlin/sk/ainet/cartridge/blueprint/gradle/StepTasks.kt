@@ -121,7 +121,11 @@ abstract class IreeCompileTask @Inject constructor(exec: ExecOperations) : IreeT
                 "host" -> "--iree-hal-target-backends=llvm-cpu"
                 "arm32" -> cpuFlags("armv7a-linux-androideabi29", "cortex-a55", "+neon", "--iree-llvmcpu-stack-allocation-limit=1048576")
                 "arm64" -> cpuFlags("aarch64-linux-android29", "cortex-a76", "+v8.2a,+dotprod", "")
-                else -> throw GradleException("IreeCompileTask.target must be host|arm32|arm64 for backend=cpu, got '${target.get()}'")
+                // Linux aarch64 boards (SL26xx, Cortex-A55): embedded ELF, no system linker; used with the
+                // Torq-fork compiler image (params.toolchain = iree-tools-torq), whose runtime is on the board.
+                "linux-arm64" -> "--iree-hal-target-backends=llvm-cpu --iree-llvmcpu-target-triple=aarch64-unknown-linux-gnu " +
+                    "--iree-llvmcpu-target-cpu=cortex-a55 --iree-llvmcpu-target-cpu-features=+v8.2a,+neon,+dotprod"
+                else -> throw GradleException("IreeCompileTask.target must be host|arm32|arm64|linux-arm64 for backend=cpu, got '${target.get()}'")
             }
         }
         runInContainer(input.get().asFile, output.get().asFile, entrypoint = null) { i, o ->

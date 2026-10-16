@@ -121,9 +121,10 @@ for ((language, source) in flavors) {
     for (graph in graphs) {
         val g = graph.split('_').joinToString("") { it.replaceFirstChar(Char::uppercase) }
         val outName = if (graph == "with_past") "step" else graph
+        // A target may name its own compiler (params.toolchain): SL26xx boards need the Torq-fork compiler.
         val compile = tasks.register<IreeCompileTask>("compile$lang$g") {
             group = "cartridge blueprint steps"
-            image.set(selected.map { it.image("iree-tools") })
+            image.set(selected.map { it.image(it.params["toolchain"] ?: "iree-tools") })
             dependsOn(export)
             input.set(exportDir.map { it.file("$graph.mlir") })
             backend.set(selected.map { it.param("backend") })

@@ -109,6 +109,11 @@
       "image": "skainet/iree-compiler:3.11.0",
       "description": "IREE tools (StableHLO -> IREE): iree-compile, iree-convert-parameters"
     },
+    "iree-tools-torq": {
+      "version": "2.0.0",
+      "image": "skainet/iree-compiler-torq:2.0.0",
+      "description": "Synaptics Torq-fork iree-compile (SKaiNET-embedded-vendors synaptics-torq/docker) for SL26xx boards: their runtime rejects upstream-IREE modules, so targets with params.toolchain = iree-tools-torq compile here; parameters still come from iree-tools (shared .irpa format)"
+    },
     "iree-android-runtime": {
       "version": "0.56.0",
       "coordinates": "sk.ainet.transformers:skainet-transformers-runtime-iree-android",
@@ -204,6 +209,32 @@
         "iree_target": "arm64",
         "suffix": "arm64",
         "device": "local-task"
+      }
+    },
+    {
+      "id": "cpu-sl26xx",
+      "target": {
+        "hardware": "IREE-linux-aarch64 (Synaptics SL26xx, Cortex-A55)",
+        "abi": "linux-aarch64"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 1900,
+        "driver": {
+          "name": "Torq-fork IREE runtime",
+          "min_version": ">=2.0.0 <2.1",
+          "note": "modules come from the Torq 2.0.x compiler; the app links the matching runtime (local-task driver)"
+        },
+        "os": {
+          "name": "linux"
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "linux-arm64",
+        "suffix": "a55",
+        "device": "local-task",
+        "toolchain": "iree-tools-torq"
       }
     }
   ],

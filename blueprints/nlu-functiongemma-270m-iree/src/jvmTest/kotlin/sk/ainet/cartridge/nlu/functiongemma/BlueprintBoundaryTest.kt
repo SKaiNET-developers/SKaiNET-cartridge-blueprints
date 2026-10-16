@@ -56,15 +56,24 @@ class BlueprintBoundaryTest {
     }
 
     @Test
-    fun `every target names an Android ABI and a complete compile contract`() {
+    fun `every target names a supported ABI and a complete compile contract`() {
         val bp = Json.parseToJsonElement(File(dir, "blueprint.json").readText()).jsonObject
         val targets = bp.getValue("targets").jsonArray.map { it.jsonObject }
-        assertEquals(listOf("vulkan-armv7", "cpu-armv7", "vulkan-arm64", "cpu-arm64"), targets.map { it.getValue("id").jsonPrimitive.content })
+        assertEquals(listOf("vulkan-armv7", "cpu-armv7", "vulkan-arm64", "cpu-arm64", "cpu-sl26xx"), targets.map { it.getValue("id").jsonPrimitive.content })
+        val toolchain = bp.getValue("toolchain").jsonObject
         for (t in targets) {
             val id = t.getValue("id").jsonPrimitive.content
             val abi = t.getValue("target").jsonObject.getValue("abi").jsonPrimitive.content
-            assertTrue(abi in setOf("armeabi-v7a", "arm64-v8a"), "$id: abi must be an Android ABI the runtime AAR ships, got '$abi'")
             val params = t.getValue("params").jsonObject
+            if (abi == "linux-aarch64") {
+                // Linux boards link the runtime themselves; their modules must come from the compiler matching it.
+                val tool = params["toolchain"]?.jsonPrimitive?.content
+                assertEquals("iree-tools-torq", tool, "$id: SL26xx modules must come from the Torq-fork compiler")
+                assertTrue(toolchain.getValue(tool!!).jsonObject.containsKey("image"), "$id: toolchain '$tool' needs a container image")
+                assertEquals("linux-arm64", params.getValue("iree_target").jsonPrimitive.content, "$id: compile target")
+            } else {
+                assertTrue(abi in setOf("armeabi-v7a", "arm64-v8a"), "$id: abi must be an Android ABI the runtime AAR ships, got '$abi'")
+            }
             for (k in listOf("backend", "iree_target", "suffix", "device")) assertTrue(k in params, "$id: params.$k drives the compile step")
             val accelerated = t.getValue("requirements").jsonObject.getValue("needs_accelerator").jsonPrimitive.content == "true"
             assertEquals(accelerated, "accelerator" in t.getValue("target").jsonObject, "$id: needs_accelerator and target.accelerator must agree")
