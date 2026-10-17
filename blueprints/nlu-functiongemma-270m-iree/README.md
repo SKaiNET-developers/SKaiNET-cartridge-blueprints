@@ -139,6 +139,15 @@ Numerics are unchanged: the graph receives exactly the rows the gather would hav
 iree-convert-parameters --parameters=model=gemma-with-past.safetensors --output=gemma-with-past.irpa
 ```
 
+Targets that list graphs in `params.int8_weights` (`cpu-sl26xx`: all three) first run a `convert` rewrite on each
+listed graph's module and safetensors together (`int8WithPast` …): every rank-2 bf16 parameter with at least 16384
+elements that the graph converts to f32 becomes an int8 parameter `<key>_q` with one f32 scale per row `<key>_s`
+(`scale = max|row| / 127`), dequantized in the graph; norm gains stay bf16. The archives shrink from 536 to 269 MB.
+The embedding table goes int8 as well; the runtime's host gather reads it with its row scales. The compile then
+runs with `--iree-opt-const-expr-hoisting=false --iree-opt-const-eval=false`, so the dequantization stays in the
+graph instead of becoming f32 copies of the weights. On the Cortex-A55 of `cpu-sl26xx` a decode step takes 610 ms
+instead of 830 ms; the golden set scores 11/12 as with bf16, with one argument different ("halfway" → `open`).
+
 ## Step 6 — Compile (`compile`: IREE tools, StableHLO → IREE)
 
 ```

@@ -1,6 +1,8 @@
 import sk.ainet.cartridge.blueprint.gradle.HostGatherTask
 import sk.ainet.cartridge.blueprint.gradle.IreeCompileTask
 import sk.ainet.cartridge.blueprint.gradle.IreeConvertParametersTask
+import sk.ainet.cartridge.blueprint.gradle.Int8ParametersTask
+import sk.ainet.cartridge.blueprint.steps.Int8ParametersRewrite
 
 // Blueprint: function-calling NLU with FunctionGemma 270M (IREE, Vulkan or CPU).
 //
@@ -86,6 +88,9 @@ val graphs = mapOf(
     "prefill-at" to mapOf("GEMMA_GRAPH" to "prefill_at", "GEN_SEQ" to "1024"),
 )
 
+// graphs whose large parameter matrices go int8 (params.int8_weights = "with-past,prefill-with-past,…")
+val int8Graphs = selected.map { t -> t.params["int8_weights"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
+
 for ((name, env) in graphs) {
     val task = name.split('-').joinToString("") { it.replaceFirstChar(Char::uppercase) }
     val exportDir = work.map { it.dir("export/$name") }
@@ -116,12 +121,24 @@ for ((name, env) in graphs) {
         output.set(work.map { it.file("hostgather/gemma-$name.mlir") })
     }
 
+    // convert (graphs listed in params.int8_weights) — weight-only int8 for the parameter matrices, module and
+    // safetensors together; dequantized in the graph.
+    val int8 = tasks.register<Int8ParametersTask>("int8$task") {
+        group = "cartridge blueprint steps"
+        dependsOn(export, hostGather)
+        mlir.set(hostGather.flatMap { it.output })
+        safetensors.set(exportDir.map { it.file("gemma-$name.safetensors") })
+        mlirOutput.set(work.map { it.file("int8/gemma-$name.mlir") })
+        safetensorsOutput.set(work.map { it.file("int8/gemma-$name.safetensors") })
+    }
+    val useInt8 = int8Graphs.map { name in it }
+
     // convert — external parameters: safetensors → IREE parameter archive. Format change only.
     val parameters = tasks.register<IreeConvertParametersTask>("parameters$task") {
         group = "cartridge blueprint steps"
         image.set(selected.map { it.image("iree-tools") })
-        dependsOn(export)
-        input.set(exportDir.map { it.file("gemma-$name.safetensors") })
+        dependsOn(export, useInt8.map { if (it) listOf(int8) else emptyList() })
+        input.set(useInt8.flatMap { if (it) int8.flatMap { t -> t.safetensorsOutput } else exportDir.map { d -> d.file("gemma-$name.safetensors") } })
         output.set(work.map { it.file("parameters/gemma-$name.irpa") })
         scope.set("model")
     }
@@ -131,7 +148,10 @@ for ((name, env) in graphs) {
     val compile = tasks.register<IreeCompileTask>("compile$task") {
         group = "cartridge blueprint steps"
         image.set(selected.map { it.image(it.params["toolchain"] ?: "iree-tools") })
-        input.set(hostGather.flatMap { it.output })
+        dependsOn(useInt8.map { if (it) listOf(int8) else emptyList() })
+        input.set(useInt8.flatMap { if (it) int8.flatMap { t -> t.mlirOutput } else hostGather.flatMap { t -> t.output } })
+        // without hoisting, so the dequantization is not hoisted into f32 copies of the weights
+        extraArgs.set(useInt8.map { if (it) Int8ParametersRewrite.COMPILE_FLAGS else emptyList() })
         backend.set(selected.map { it.param("backend") })
         target.set(selected.map { it.param("iree_target") })
         output.set(work.zip(selected) { w, t -> w.file("compile/${t.id}/gemma-$name.vmfb") })

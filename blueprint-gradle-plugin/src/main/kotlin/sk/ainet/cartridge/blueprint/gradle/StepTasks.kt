@@ -17,6 +17,7 @@ import org.gradle.process.ExecOperations
 import org.gradle.work.DisableCachingByDefault
 import sk.ainet.cartridge.blueprint.steps.Conv1dIm2colRewrite
 import sk.ainet.cartridge.blueprint.steps.HostGatherRewrite
+import sk.ainet.cartridge.blueprint.steps.Int8ParametersRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8WeightsRewrite
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -70,6 +71,27 @@ abstract class Int8WeightsTask : DefaultTask() {
         val out = output.get().asFile.apply { parentFile.mkdirs() }
         val result = input.get().asFile.bufferedReader().use { r -> out.bufferedWriter().use { w -> Int8WeightsRewrite.rewrite(r, w) } }
         logger.lifecycle("int8-weights: ${result.rewritten} matrices as int8 in ${out.name}, ${result.bytesSaved / 1_000_000} MB fewer weight bytes")
+    }
+}
+
+/**
+ * `convert`: weight-only int8 for the large bf16 parameter matrices of an exported module and its safetensors file
+ * (per-row scales, dequantized in the graph). Compile the output with [Int8ParametersRewrite.COMPILE_FLAGS].
+ */
+@CacheableTask
+abstract class Int8ParametersTask : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mlir: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val safetensors: RegularFileProperty
+    @get:OutputFile abstract val mlirOutput: RegularFileProperty
+    @get:OutputFile abstract val safetensorsOutput: RegularFileProperty
+
+    @TaskAction
+    fun run() = materializing {
+        val result = Int8ParametersRewrite.rewrite(mlir.get().asFile.readText())
+        mlirOutput.get().asFile.apply { parentFile.mkdirs() }.writeText(result.mlir)
+        val input = safetensors.get().asFile
+        val bytes = Int8ParametersRewrite.rewriteSafetensors(input, safetensorsOutput.get().asFile, result.matrices)
+        logger.lifecycle("int8-parameters: ${result.matrices.size} matrices as int8, parameters ${input.length() / 1_000_000} -> ${bytes / 1_000_000} MB")
     }
 }
 

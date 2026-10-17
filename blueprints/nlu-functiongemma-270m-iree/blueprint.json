@@ -234,7 +234,8 @@
         "iree_target": "linux-arm64",
         "suffix": "a55",
         "device": "local-task",
-        "toolchain": "iree-tools-torq"
+        "toolchain": "iree-tools-torq",
+        "int8_weights": "with-past,prefill-with-past,prefill-at"
       }
     }
   ],
@@ -309,6 +310,28 @@
       "description": "Replace the token-embedding gather with an %emb argument; the runtime reads embedding rows from the archive. Numerics unchanged."
     },
     {
+      "id": "int8-parameters",
+      "kind": "convert",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "with-past-hostgather-mlir",
+        "with-past-safetensors",
+        "prefill-with-past-hostgather-mlir",
+        "prefill-with-past-safetensors",
+        "prefill-at-hostgather-mlir",
+        "prefill-at-safetensors"
+      ],
+      "produces": [
+        "with-past-int8-mlir",
+        "with-past-int8-safetensors",
+        "prefill-with-past-int8-mlir",
+        "prefill-with-past-int8-safetensors",
+        "prefill-at-int8-mlir",
+        "prefill-at-int8-safetensors"
+      ],
+      "description": "Only for the graphs a target lists in params.int8_weights: every rank-2 bf16 parameter with at least 16384 elements that the graph converts to f32 becomes an int8 parameter <key>_q with one f32 scale per row <key>_s (scale = max|row| / 127), dequantized in the graph; norm gains stay bf16. Module and safetensors are rewritten together; the parameters step then converts the int8 safetensors, and the compile step reads the int8 module and runs with const-expr hoisting and const-eval off, so no f32 copies of the weights are made. The embedding table goes int8 too: the runtime's host gather reads an int8 table with its row scales. On a Cortex-A55 (cpu-sl26xx): archives 536 -> 269 MB, decode 830 -> 610 ms/token, golden set 11/12 as with bf16 (one argument differs)."
+    },
+    {
       "id": "parameters",
       "kind": "convert",
       "tool": "iree-tools",
@@ -322,7 +345,7 @@
         "prefill-with-past-irpa",
         "prefill-at-irpa"
       ],
-      "description": "iree-convert-parameters: safetensors -> .irpa, scope `model`. Format change only."
+      "description": "iree-convert-parameters: safetensors -> .irpa, scope `model`. Format change only. Reads the int8 safetensors for graphs listed in params.int8_weights."
     },
     {
       "id": "compile",
@@ -339,7 +362,7 @@
         "prefill-at-vmfb"
       ],
       "per_target": true,
-      "description": "iree-compile for the target's backend: vulkan-spirv (--iree-vulkan-target) or llvm-cpu."
+      "description": "iree-compile for the target's backend: vulkan-spirv (--iree-vulkan-target) or llvm-cpu. Reads the int8 module for graphs listed in params.int8_weights."
     },
     {
       "id": "runtime",
