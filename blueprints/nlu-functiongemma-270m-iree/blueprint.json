@@ -235,7 +235,8 @@
         "suffix": "a55",
         "device": "local-task",
         "toolchain": "iree-tools-torq",
-        "int8_weights": "with-past,prefill-with-past,prefill-at"
+        "int8_weights": "with-past,prefill-with-past,prefill-at",
+        "chunk": "4"
       }
     }
   ],
@@ -284,7 +285,7 @@
           },
           "prefill-with-past": {
             "GEMMA_GRAPH": "prefill_with_past",
-            "GEMMA_CHUNK": "32"
+            "GEMMA_CHUNK": "32 unless the target sets params.chunk (cpu-sl26xx: 4; the descriptor's runtime_hint.chunk must match, which a target cannot override yet: dev packs set it from params.chunk)"
           },
           "prefill-at": {
             "GEMMA_GRAPH": "prefill_at",

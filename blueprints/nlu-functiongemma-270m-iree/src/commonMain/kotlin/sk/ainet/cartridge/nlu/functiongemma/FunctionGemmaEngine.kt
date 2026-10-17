@@ -6,7 +6,9 @@ import kotlin.time.TimeSource
 /**
  * FunctionGemma-270M tool calling under the KV-cache contract, platform-independent: [warmUp] prefills the catalog
  * prefix once and snapshots the cache; every [resolve] restores the snapshot, runs the utterance as chunk calls and
- * decodes greedily until `<end_function_call>`, `<end_of_turn>`, the budget, or [Config.maxNewTokens].
+ * decodes greedily until the `}` that closes the call, `<end_function_call>`, `<end_of_turn>`, the budget, or
+ * [Config.maxNewTokens]. Tokens the catalog leaves no choice about ([CallGrammar]) are not decoded one by one: with
+ * small chunks ([Config.forcedInChunks]) they go to the model in chunk calls.
  *
  * What differs per platform is injected: the [KvBackend] (the runtime), the [NluTokenizer] and the [PrefixIdCache].
  * The chat template and the tool-call parser are SKaiNET-transformers' released common code.
@@ -33,6 +35,11 @@ public class FunctionGemmaEngine(
         val maxNewTokens: Int = 32,
         /** A prose answer (first token is not `<start_function_call>`) can never become a call: stop after this many tokens. */
         val maxProseTokens: Int = 8,
+        /**
+         * Feed runs of forced tokens in chunk calls. Worth it when a chunk call costs little more than a step, as with
+         * small chunks on a CPU (4 tokens: ~1.3 steps on a Cortex-A55); a 32-token chunk costs ~6 steps.
+         */
+        val forcedInChunks: Boolean = chunk <= 8,
     )
 
     override val toolNames: Set<String> = catalog.names
@@ -44,6 +51,7 @@ public class FunctionGemmaEngine(
     private var prompt: FunctionGemmaPrompt? = null
     private var stopIds: Set<Int> = setOf(FunctionGemmaPrompt.EOS)
     private var startCallId: Int = -1
+    private var grammar: CallGrammar? = null
 
     /** Warm-up stage times in ms (tokenizer, prompt render + encode, backend open, prefill). */
     public var warmUpTiming: Map<String, Long> = emptyMap()
@@ -73,6 +81,7 @@ public class FunctionGemmaEngine(
         // first closed call, not only at <end_of_turn>.
         stopIds = setOf(FunctionGemmaPrompt.EOS) + listOfNotNull(tok.encode("<end_function_call>").lastOrNull())
         startCallId = tok.encode("<start_function_call>").lastOrNull() ?: -1
+        grammar = CallGrammar(catalog, tok).takeIf { it.usable }
         lap("prompt")
 
         require(prefixIds.size < config.prefillSeq) {
@@ -116,26 +125,47 @@ public class FunctionGemmaEngine(
             val chunkMs = lapMs()
 
             val out = ArrayList<Int>(config.maxNewTokens)
+            val cursor = grammar?.cursor()
             var prose = false
+            var calls = 0
             while (out.size < config.maxNewTokens) {
                 if (next == FunctionGemmaPrompt.EOS) break
                 out += next
                 if (next in stopIds) break   // `<end_function_call>` closes the call: nothing after it is used
                 if (out.size == 1 && next != startCallId) prose = true
                 if (prose && out.size >= config.maxProseTokens) break   // prose never becomes a call; enough to report NoCall
+                // the model's token, then what the grammar forces after it: all of it goes into the cache
+                val feed = arrayListOf(next)
+                cursor?.accept(next)
+                while (cursor != null && !cursor.closed && out.size < config.maxNewTokens) {
+                    val forced = cursor.forced().takeIf { it >= 0 } ?: break
+                    out += forced; feed += forced
+                    cursor.accept(forced)
+                }
+                if (cursor?.closed == true) break   // the call's `}`: the rest is `<end_function_call>`
                 if (started.elapsedNow().inWholeMilliseconds > budgetMs) {
-                    val timing = NluResolution.Timing(tokenizeMs, restoreMs, chunkMs, mark.elapsedNow().inWholeMilliseconds, out.size)
+                    val timing = NluResolution.Timing(tokenizeMs, restoreMs, chunkMs, mark.elapsedNow().inWholeMilliseconds, out.size, calls)
                     return NluResolution.Failed("budget of $budgetMs ms exceeded after ${out.size} tokens", timing = timing)
                 }
-                next = b.step(next)
+                if (feed.size > 1 && config.forcedInChunks) {
+                    for (from in feed.indices step config.chunk) {
+                        val n = minOf(config.chunk, feed.size - from)
+                        next = b.chunk(IntArray(config.chunk).also { feed.toIntArray().copyInto(it, 0, from, from + n) }, n)
+                        calls++
+                    }
+                } else {
+                    for (t in feed) { next = b.step(t); calls++ }
+                }
             }
-            val timing = NluResolution.Timing(tokenizeMs, restoreMs, chunkMs, lapMs(), out.size)
+            // a call closed by the grammar ends like one the model closed, so the parser reads it the same way
+            if (cursor?.closed == true) stopIds.firstOrNull { it != FunctionGemmaPrompt.EOS }?.let { out += it }
+            val timing = NluResolution.Timing(tokenizeMs, restoreMs, chunkMs, lapMs(), out.size, calls)
 
             val text = if (out.isEmpty()) "" else tok.decode(out.toIntArray())
             val call = runCatching { parser.parse(text) }.getOrDefault(emptyList()).firstOrNull()
                 ?: return NluResolution.NoCall(text, timing)
             val name = catalog.snapName(call.name) ?: return NluResolution.NoCall(text, timing)
-            val args = call.arguments.entries.associate { (k, v) -> k to v.toString().trim('"') }
+            val args = catalog.snapArgs(name, call.arguments.entries.associate { (k, v) -> k to v.toString().trim('"') })
             return NluResolution.Call(name, args, text, timing)
         } catch (e: IllegalStateException) {
             log("resolve failed: ${e.message}")

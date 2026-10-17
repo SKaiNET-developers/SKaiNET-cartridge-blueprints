@@ -84,7 +84,7 @@ val selected = blueprint.target
 // name → the exporter's environment contract for that graph (blueprint.json steps[export].params.graphs)
 val graphs = mapOf(
     "with-past" to mapOf("GEMMA_GRAPH" to "with_past"),
-    "prefill-with-past" to mapOf("GEMMA_GRAPH" to "prefill_with_past", "GEMMA_CHUNK" to "32"),
+    "prefill-with-past" to mapOf("GEMMA_GRAPH" to "prefill_with_past"),  // + GEMMA_CHUNK, the target's params.chunk (32)
     "prefill-at" to mapOf("GEMMA_GRAPH" to "prefill_at", "GEN_SEQ" to "1024"),
 )
 
@@ -102,11 +102,14 @@ for ((name, env) in graphs) {
         classpath = exportTool
         mainClass.set("sk.ainet.models.functiongemma.FunctionGemmaExportCliKt")
         maxHeapSize = "8g"
+        // Tokens per prefill-with-past call: 32 unless the target sets params.chunk (small chunks cost about one step
+        // plus a little per token on CPUs, so they also carry the tokens the call grammar forces).
+        val graphEnv = if (name == "prefill-with-past") selected.map { env + ("GEMMA_CHUNK" to (it.params["chunk"] ?: "32")) } else provider { env }
         inputs.file(gguf).withPathSensitivity(PathSensitivity.NONE)
-        inputs.property("env", env)
+        inputs.property("env", graphEnv)
         outputs.dir(exportDir)
-        environment(env)
         doFirst {
+            environment(graphEnv.get())
             environment("GEMMA_GGUF", gguf.get().asFile.absolutePath)
             environment("GEMMA_OUT_DIR", exportDir.get().asFile.apply { mkdirs() }.absolutePath)
         }

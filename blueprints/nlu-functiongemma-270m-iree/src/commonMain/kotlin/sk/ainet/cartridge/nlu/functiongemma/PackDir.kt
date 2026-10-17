@@ -6,6 +6,7 @@ import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -27,6 +28,10 @@ public class PackDir(public val root: Path) {
 
     /** `true` when the descriptor's target names an accelerator — the cartridge was built for a GPU. */
     public val targetsAccelerator: Boolean get() = descriptor["target"]?.jsonObject?.containsKey("accelerator") == true
+
+    /** Tokens per prefill-with-past call the graphs were exported with (`attributes.runtime_hint.chunk`). */
+    public val chunk: Int?
+        get() = descriptor["attributes"]?.jsonObject?.get("runtime_hint")?.jsonObject?.get("chunk")?.jsonPrimitive?.intOrNull
 
     public fun graph(name: String): Path = file("artifacts/model/gemma-$name.vmfb")
     public fun parameters(name: String): Path = file("artifacts/weights/gemma-$name.irpa")

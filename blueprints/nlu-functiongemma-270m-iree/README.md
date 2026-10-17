@@ -148,6 +148,16 @@ runs with `--iree-opt-const-expr-hoisting=false --iree-opt-const-eval=false`, so
 graph instead of becoming f32 copies of the weights. On the Cortex-A55 of `cpu-sl26xx` a decode step takes 610 ms
 instead of 830 ms; the golden set scores 11/12 as with bf16, with one argument different ("halfway" → `open`).
 
+A target can also export the chunk graph with fewer tokens per call (`params.chunk`; `cpu-sl26xx`: 4, others 32).
+On the Cortex-A55 a 4-token call costs ~0.78 s against ~0.61 s for one decode step and ~3.8 s for a 32-token call,
+so the utterance goes in faster, and the engine can feed the tokens the catalog leaves no choice about (`call:`,
+the rest of a function name, `{`, `:`, `<escape>`, the rest of an enum value, the closing `}`) in one call instead
+of one step each (`CallGrammar`). Only the model's own choices are decoded token by token; it stops at the `}`
+that closes the call. An enum value the model misspells is snapped to the catalog's value (`close` → `closed`).
+On `cpu-sl26xx`: golden set 11/12 as before, all arguments right, p50 17.8 → 8.9 s per command. The descriptor's
+`attributes.runtime_hint.chunk` must say the chunk the graphs have; a target cannot override descriptor
+attributes yet, so development packs set it from `params.chunk`.
+
 ## Step 6 — Compile (`compile`: IREE tools, StableHLO → IREE)
 
 ```

@@ -15,8 +15,13 @@ public sealed interface NluResolution {
     /** The cartridge could not produce an answer inside the budget or the runtime failed. */
     public data class Failed(val reason: String, val cause: Throwable? = null, val timing: Timing? = null) : NluResolution
 
-    /** Wall-clock breakdown of one [NluToolCallCartridge.resolve] call, in milliseconds. */
-    public data class Timing(val tokenizeMs: Long, val restoreMs: Long, val chunkMs: Long, val decodeMs: Long, val decodeTokens: Int) {
+    /**
+     * Wall-clock breakdown of one [NluToolCallCartridge.resolve] call, in milliseconds. [decodeTokens] counts the
+     * answer's tokens, [decodeCalls] the model calls that produced them (forced tokens share calls).
+     */
+    public data class Timing(
+        val tokenizeMs: Long, val restoreMs: Long, val chunkMs: Long, val decodeMs: Long, val decodeTokens: Int, val decodeCalls: Int = decodeTokens,
+    ) {
         val totalMs: Long get() = tokenizeMs + restoreMs + chunkMs + decodeMs
     }
 }
