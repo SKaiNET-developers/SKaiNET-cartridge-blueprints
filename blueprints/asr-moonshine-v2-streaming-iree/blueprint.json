@@ -242,7 +242,8 @@
         "backend": "cpu",
         "iree_target": "linux-arm64",
         "device": "local-task",
-        "toolchain": "iree-tools-torq"
+        "toolchain": "iree-tools-torq",
+        "conv1d_im2col": "true"
       }
     }
   ],
@@ -349,6 +350,20 @@
         "de-params-irpa"
       ],
       "description": "iree-compile --iree-opt-export-parameters=model=params.irpa on the prefill graph: the decoder weights as one parameter archive, shared by prefill and step (byte-identical from either) and independent of the target. Runs once per selected flavor."
+    },
+    {
+      "id": "conv1d-im2col",
+      "kind": "convert",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "en-frontend-mlir",
+        "de-frontend-mlir"
+      ],
+      "produces": [
+        "en-frontend-im2col-mlir",
+        "de-frontend-im2col-mlir"
+      ],
+      "description": "Only for targets with params.conv1d_im2col = \"true\": the frontend's two strided 1-D convolutions as im2col (strided slices stacked over channels) + one matmul each, same arithmetic. The Torq-fork llvm-cpu backend leaves the generalized convolution unvectorized (3.9 s per window on a Cortex-A55); as a matmul it takes 0.17 s. The compile step then reads the rewritten frontend."
     },
     {
       "id": "compile",

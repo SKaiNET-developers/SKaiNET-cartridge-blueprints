@@ -15,6 +15,7 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import org.gradle.work.DisableCachingByDefault
+import sk.ainet.cartridge.blueprint.steps.Conv1dIm2colRewrite
 import sk.ainet.cartridge.blueprint.steps.HostGatherRewrite
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -37,6 +38,20 @@ abstract class HostGatherTask : DefaultTask() {
         val result = HostGatherRewrite.rewrite(input.get().asFile.readText())
         output.get().asFile.apply { parentFile.mkdirs() }.writeText(result.mlir)
         logger.lifecycle("host-gather: @${result.function} takes %emb : ${result.embeddingType} (was a gather from ${result.table})")
+    }
+}
+
+/** `convert`: rewrites the 1-D convolutions of an exported StableHLO module as im2col + matmul. */
+@CacheableTask
+abstract class Conv1dIm2colTask : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
+    @get:OutputFile abstract val output: RegularFileProperty
+
+    @TaskAction
+    fun run() = materializing {
+        val result = Conv1dIm2colRewrite.rewrite(input.get().asFile.readText())
+        output.get().asFile.apply { parentFile.mkdirs() }.writeText(result.mlir)
+        logger.lifecycle("conv1d-im2col: ${result.rewritten} convolution(s) as im2col + matmul in ${output.get().asFile.name}")
     }
 }
 

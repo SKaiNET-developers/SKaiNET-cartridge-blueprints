@@ -1,3 +1,4 @@
+import sk.ainet.cartridge.blueprint.gradle.Conv1dIm2colTask
 import sk.ainet.cartridge.blueprint.gradle.IreeCompileTask
 import sk.ainet.cartridge.blueprint.gradle.IreeExportParametersTask
 
@@ -117,6 +118,15 @@ for ((language, source) in flavors) {
         scope.set("model")
     }
 
+    // convert (targets with params.conv1d_im2col = "true") — the frontend's 1-D convolutions as im2col + matmul.
+    val im2col = tasks.register<Conv1dIm2colTask>("im2colFrontend$lang") {
+        group = "cartridge blueprint steps"
+        dependsOn(export)
+        input.set(exportDir.map { it.file("frontend.mlir") })
+        output.set(work.map { it.file("convert/$language/frontend-im2col.mlir") })
+    }
+    val useIm2col = selected.map { it.params["conv1d_im2col"] == "true" }
+
     // compile — each graph → .vmfb for the profile's target; the decoder graphs reference the archive.
     for (graph in graphs) {
         val g = graph.split('_').joinToString("") { it.replaceFirstChar(Char::uppercase) }
@@ -126,7 +136,12 @@ for ((language, source) in flavors) {
             group = "cartridge blueprint steps"
             image.set(selected.map { it.image(it.params["toolchain"] ?: "iree-tools") })
             dependsOn(export)
-            input.set(exportDir.map { it.file("$graph.mlir") })
+            if (graph == "frontend") {
+                dependsOn(useIm2col.map { if (it) listOf(im2col) else emptyList() })
+                input.set(useIm2col.flatMap { if (it) im2col.flatMap { t -> t.output } else exportDir.map { d -> d.file("frontend.mlir") } })
+            } else {
+                input.set(exportDir.map { it.file("$graph.mlir") })
+            }
             backend.set(selected.map { it.param("backend") })
             target.set(selected.map { it.param("iree_target") })
             if (graph == "prefill" || graph == "with_past") parameterScope.set("model")
