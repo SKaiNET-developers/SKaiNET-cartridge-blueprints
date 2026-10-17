@@ -36,7 +36,8 @@ public class MoonshineAsrCartridge(
             device,
             IreeMoonshineStream.Files(
                 files.frontendVmfb.toString(), files.encoderVmfb.toString(), files.adapterVmfb.toString(),
-                files.prefillVmfb.toString(), files.stepVmfb.toString(), files.paramsIrpa.toString(),
+                files.prefillVmfb.toString(), files.stepVmfb.toString(),
+                requireNotNull(files.paramsIrpa) { "${pack.id} has no artifacts/weights/$language/params.irpa" }.toString(),
                 files.vocabBin.toString(), files.decEmbedBin.toString(),
             ),
         )

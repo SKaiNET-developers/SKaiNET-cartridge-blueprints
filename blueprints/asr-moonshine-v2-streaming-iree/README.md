@@ -22,8 +22,8 @@ materialize it into a cartridge with *your* profile.
 ## What you will build
 
 A signed cartridge `pack_dir` holding, per selected language, five compiled graphs (`frontend`, `encoder`,
-`adapter`, `prefill`, `step`), one parameter archive with the decoder weights, the decoder embedding table and the
-detokenizer table, plus the streaming runtime library for the target ABI — and a descriptor that states what was
+`adapter`, `prefill`, `step`), one parameter archive with the decoder weights (not on targets whose decoder graphs
+are int8, see Step 5), the decoder embedding table and the detokenizer table, plus the streaming runtime library for the target ABI — and a descriptor that states what was
 measured on *your* device.
 
 ## Prerequisites
@@ -81,7 +81,8 @@ A target can ask for int8 weights afterwards (Step 5).
 `iree-compile --iree-hal-target-backends=llvm-cpu --iree-opt-export-parameters=model=params.irpa prefill.mlir` lifts the
 decoder weights out of the graph into one archive. The archive is independent of the target and identical whether
 taken from the `prefill` or the `with_past` graph, so it is produced once per language and shared. (The
-throw-away host `.vmfb` of this step is discarded.)
+throw-away host `.vmfb` of this step is discarded.) The step's product is the language's weights directory
+(`weights<Lang>`): `dec_embed.bin`, plus `params.irpa` unless both decoder graphs are int8 (Step 5).
 
 ## Step 5 — Compile (`compile`: IREE tools, StableHLO → IREE)
 
@@ -104,7 +105,8 @@ Two `convert` rewrites run before the compile when the target asks for them:
 - `params.int8_weights = "encoder,adapter,prefill,with_past"` (the graphs to rewrite): every rank-2 f32 constant with at
   least 16384 elements becomes int8 with one symmetric scale per row, dequantized in the graph (`int8<Lang><Graph>`).
   Those graphs compile with `--iree-opt-const-expr-hoisting=false --iree-opt-const-eval=false`, so the weights stay
-  int8 inside the `.vmfb`; the decoder graphs then no longer read the parameter archive (the pack still carries it).
+  int8 inside the `.vmfb`. When both decoder graphs are listed they read no parameter archive, so the archive is
+  neither compiled against nor packed (86 MB less for the English flavor).
 
 `cpu-sl26xx` sets both. On its Cortex-A55 the int8 weights take the streaming real-time factor from 1.48 to 0.95,
 with identical finals on 16 test clips.

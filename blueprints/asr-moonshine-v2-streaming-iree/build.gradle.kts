@@ -160,13 +160,22 @@ for ((language, source) in flavors) {
             extraArgs.set(useInt8.map { if (it) Int8WeightsRewrite.COMPILE_FLAGS else emptyList() })
             backend.set(selected.map { it.param("backend") })
             target.set(selected.map { it.param("iree_target") })
-            if (graph == "prefill" || graph == "with_past") parameterScope.set("model")
+            // f32 decoder graphs read their weights from the archive; int8 ones carry them inline
+            if (graph == "prefill" || graph == "with_past") parameterScope.set(useInt8.map { if (it) null else "model" })
             output.set(work.zip(selected) { w, t -> w.file("compile/${t.id}/$language/$outName.vmfb") })
         }
         blueprint.product("$language-$outName-vmfb", compile.flatMap { it.output }, flavor = language)
     }
-    blueprint.product("$language-params-irpa", parameters.flatMap { it.output }, flavor = language)
-    blueprint.product("$language-dec-embed", export.map { exportDir.get().file("dec_embed.bin") }, flavor = language)
+    // The decoder's weight files: the embedding rows, and the archive unless both decoder graphs are int8.
+    val archiveRead = int8Graphs.map { !("prefill" in it && "with_past" in it) }
+    val weights = tasks.register<Sync>("weights$lang") {
+        group = "cartridge blueprint steps"
+        dependsOn(export, archiveRead.map { if (it) listOf(parameters) else emptyList() })
+        from(exportDir.map { it.file("dec_embed.bin") })
+        from(archiveRead.flatMap { if (it) parameters.flatMap { t -> t.output }.map { f -> listOf(f) } else provider { emptyList() } })
+        into(work.map { it.dir("weights/$language") })
+    }
+    blueprint.product("$language-weights", weights.map { work.get().dir("weights/$language") }, flavor = language)
     blueprint.product("$language-vocab", export.map { exportDir.get().file("vocab.bin") }, flavor = language)
 }
 

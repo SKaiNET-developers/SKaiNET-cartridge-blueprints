@@ -344,13 +344,15 @@
       "tool": "iree-tools",
       "uses": [
         "en-prefill-mlir",
-        "de-prefill-mlir"
+        "en-dec-embed",
+        "de-prefill-mlir",
+        "de-dec-embed"
       ],
       "produces": [
-        "en-params-irpa",
-        "de-params-irpa"
+        "en-weights",
+        "de-weights"
       ],
-      "description": "iree-compile --iree-opt-export-parameters=model=params.irpa on the prefill graph: the decoder weights as one parameter archive, shared by prefill and step (byte-identical from either) and independent of the target. Runs once per selected flavor."
+      "description": "iree-compile --iree-opt-export-parameters=model=params.irpa on the prefill graph: the decoder weights as one parameter archive, shared by prefill and step (byte-identical from either) and independent of the target. Its product is the flavor's weights directory: dec_embed.bin, plus params.irpa unless the target lists both decoder graphs (prefill, with_past) in params.int8_weights - int8 decoder graphs carry their weights inline and read no archive. Runs once per selected flavor."
     },
     {
       "id": "conv1d-im2col",
@@ -390,7 +392,7 @@
         "de-prefill-int8-mlir",
         "de-with-past-int8-mlir"
       ],
-      "description": "Only for the graphs a target lists in params.int8_weights: every rank-2 f32 constant with at least 16384 elements becomes int8 with one symmetric scale per row, dequantized in the graph; vectors and higher-rank constants (masks, bands) stay f32. The compile step then reads the rewritten graph and runs with const-expr hoisting and const-eval off, so the weights stay int8 (inline in the .vmfb; the decoder graphs no longer read the parameter archive). On a Cortex-A55 (cpu-sl26xx): RTF 1.48 -> 0.95 paced, finals identical on 16 test clips. The frontend stays f32 (int8 measured no faster)."
+      "description": "Only for the graphs a target lists in params.int8_weights: every rank-2 f32 constant with at least 16384 elements becomes int8 with one symmetric scale per row, dequantized in the graph; vectors and higher-rank constants (masks, bands) stay f32. The compile step then reads the rewritten graph and runs with const-expr hoisting and const-eval off, so the weights stay int8 (inline in the .vmfb; int8 decoder graphs read no parameter archive, and the pack ships none). On a Cortex-A55 (cpu-sl26xx): RTF 1.48 -> 0.95 paced, finals identical on 16 test clips. The frontend stays f32 (int8 measured no faster)."
     },
     {
       "id": "compile",
@@ -448,16 +450,14 @@
         "en-adapter-vmfb",
         "en-prefill-vmfb",
         "en-step-vmfb",
-        "en-params-irpa",
-        "en-dec-embed",
+        "en-weights",
         "en-vocab",
         "de-frontend-vmfb",
         "de-encoder-vmfb",
         "de-adapter-vmfb",
         "de-prefill-vmfb",
         "de-step-vmfb",
-        "de-params-irpa",
-        "de-dec-embed",
+        "de-weights",
         "de-vocab"
       ]
     },
@@ -527,18 +527,9 @@
       "flavor": "en"
     },
     {
-      "from": "en-params-irpa",
+      "from": "en-weights",
       "role": "weights",
-      "path": "artifacts/weights/en/params.irpa",
-      "derived_from": [
-        "weights-en"
-      ],
-      "flavor": "en"
-    },
-    {
-      "from": "en-dec-embed",
-      "role": "weights",
-      "path": "artifacts/weights/en/dec_embed.bin",
+      "path": "artifacts/weights/en/",
       "derived_from": [
         "weights-en"
       ],
@@ -599,18 +590,9 @@
       "flavor": "de"
     },
     {
-      "from": "de-params-irpa",
+      "from": "de-weights",
       "role": "weights",
-      "path": "artifacts/weights/de/params.irpa",
-      "derived_from": [
-        "weights-de"
-      ],
-      "flavor": "de"
-    },
-    {
-      "from": "de-dec-embed",
-      "role": "weights",
-      "path": "artifacts/weights/de/dec_embed.bin",
+      "path": "artifacts/weights/de/",
       "derived_from": [
         "weights-de"
       ],
