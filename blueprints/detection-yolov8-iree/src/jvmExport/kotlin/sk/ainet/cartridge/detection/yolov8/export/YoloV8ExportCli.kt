@@ -10,6 +10,7 @@ import onnx.ModelProto
 import onnx.TensorProto
 import pbandk.decodeFromByteArray
 import sk.ainet.cartridge.detection.yolov8.model.YoloV8
+import sk.ainet.cartridge.detection.yolov8.model.YoloV8.Companion.FUNCTION
 import sk.ainet.cartridge.detection.yolov8.model.YoloV8Config
 import sk.ainet.compile.hlo.StableHloConverterFactory
 import sk.ainet.context.ExecutionContext
@@ -27,9 +28,6 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
-
-/** The one entry point of the exported module; the runtime invokes it by this name. */
-public const val FUNCTION: String = "yolov8_detect"
 
 /**
  * Export step of the blueprint: the Ultralytics ONNX export's initializers (Conv weights, BatchNorm fused) baked

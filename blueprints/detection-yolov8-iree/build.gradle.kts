@@ -25,8 +25,12 @@ plugins {
  */
 val skainetVersion = providers.gradleProperty("skainetVersion").getOrElse("0.60.1")
 
-/** The SKaiNET-transformers runtime that will ship `IreeModuleRunner` + `libskainet_iree_module.so` (not released yet). */
-val moduleRuntimeVersion = providers.gradleProperty("moduleRuntimeVersion").getOrElse("0.61.0")
+/**
+ * The SKaiNET-transformers runtime with `IreeModuleRunner` + `libskainet_iree_module.so` (branch
+ * `feature/iree-module-runner`, next release 0.61.1). UNTIL IT IS ON MAVEN CENTRAL: `-PmoduleRuntimeVersion=0.61.1-SNAPSHOT`
+ * with `-PuseMavenLocal=true`, against `:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=0.61.1-SNAPSHOT`.
+ */
+val moduleRuntimeVersion = providers.gradleProperty("moduleRuntimeVersion").getOrElse("0.61.1")
 
 kotlin {
     explicitApi()
@@ -67,6 +71,9 @@ kotlin {
             api("sk.ainet.core:skainet-data-media:$skainetVersion")   // BoundingBox / ScoredBox in the public API
             implementation("sk.ainet.core:skainet-lang-core:$skainetVersion")
             implementation("sk.ainet.core:skainet-lang-models:$skainetVersion")
+        }
+        androidMain.dependencies {
+            api("sk.ainet.transformers:skainet-transformers-runtime-iree-android:$moduleRuntimeVersion")  // IreeModuleRunner
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

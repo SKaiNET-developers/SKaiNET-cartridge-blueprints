@@ -5,6 +5,7 @@ import sk.ainet.lang.nn.Conv2d
 import sk.ainet.lang.nn.Module
 import sk.ainet.lang.nn.topology.ModuleParameter
 import sk.ainet.lang.nn.topology.ModuleParameters
+import sk.ainet.lang.nn.topology.weights
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.VoidOpsTensor
@@ -111,6 +112,11 @@ public class YoloV8(public val config: YoloV8Config = YoloV8Config()) : Module<F
         for (child in m.modules) collect(child, out)
         return out
     }
+
+    public companion object {
+        /** The exported module's one entry point; the export names it, the runtime binding invokes it. */
+        public const val FUNCTION: String = "yolov8_detect"
+    }
 }
 
 /** A shape-only placeholder; baking replaces the parameter's value. */
@@ -189,7 +195,7 @@ internal class HeadBranch(override val name: String, cin: Int, mid: Int, cout: I
 /**
  * Ultralytics `Detect` in export mode: per level, box distribution (`cv2.i`, 4 x regMax) and class logits
  * (`cv3.i`); flattened and concatenated over levels; DFL expectation (softmax over the bins, then the fixed
- * `dfl.conv` projection `0..regMax-1`); anchor-point decode to center/size; stride scaling; sigmoid on classes.
+ * `dfl.conv` weight `0..regMax-1` as a projection); anchor-point decode to center/size; stride scaling; sigmoid on classes.
  */
 internal class Detect(override val name: String, ch: List<Int>, private val config: YoloV8Config) : Module<FP32, Float>() {
     private val nc = config.numClasses
@@ -210,9 +216,12 @@ internal class Detect(override val name: String, ch: List<Int>, private val conf
         val boxes = ops.concat(features.mapIndexed { i, f -> flat(box[i].forward(f, ctx), 4 * regMax) }, dim = 2)  // [1, 4R, A]
         val scores = ops.concat(features.mapIndexed { i, f -> flat(cls[i].forward(f, ctx), nc) }, dim = 2)        // [1, nc, A]
 
-        // DFL: [1, 4R, A] → [1, 4, R, A] → [1, R, 4, A] → softmax over R → 1x1 conv R→1 → [1, 4, A] distances.
-        val bins = ops.softmax(ops.permute(ops.reshape(boxes, Shape(1, 4, regMax, a)), intArrayOf(0, 2, 1, 3)), dim = 1)
-        val dist = ops.reshape(dfl.forward(bins, ctx), Shape(1, 4, a))
+        // DFL: [1, 4R, A] → [1, 4, R, A] → [1, 4, A, R] → softmax over R → · dfl weight [R, 1] → [1, 4, A] distances.
+        // The bins go innermost before the softmax: a reduction over the strided R axis (Ultralytics' own layout,
+        // [1, R, 4, A] softmax(dim 1)) hangs IREE 3.11's SPIR-V codegen; over the innermost axis it compiles in a second.
+        val bins = ops.softmax(ops.permute(ops.reshape(boxes, Shape(1, 4, regMax, a)), intArrayOf(0, 1, 3, 2)), dim = 3)
+        val projection = ops.reshape(dfl.params.weights().value, Shape(regMax, 1))
+        val dist = ops.reshape(ops.matmul(ops.reshape(bins, Shape(4 * a, regMax)), projection), Shape(1, 4, a))
         val (lt, rb) = ops.split(dist, splitSize = 2, dim = 1)
 
         // center = (anchor + (rb - lt) / 2) * stride, size = (lt + rb) * stride

@@ -21,7 +21,7 @@ library**. You materialize it into a cartridge with *your* profile.
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Engine, post-processing, pack locator and the YOLOv8 graph are common code; the Android runtime binding lands with `IreeModuleRunner` |
 | Targets | `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`) |
-| Toolchain | SKaiNET 0.60.1, Ultralytics 8.4.170 (convert only), IREE tools 3.11.0, SKaiNET-transformers runtime 0.61.0 |
+| Toolchain | SKaiNET 0.60.1, Ultralytics 8.4.170 (convert only), IREE tools 3.11.0, SKaiNET-transformers runtime 0.61.1 |
 
 ## What you will build
 
