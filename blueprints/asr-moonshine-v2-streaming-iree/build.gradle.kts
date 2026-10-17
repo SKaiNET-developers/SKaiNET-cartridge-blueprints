@@ -19,11 +19,11 @@ plugins {
 }
 
 /**
- * The SKaiNET-transformers runtime that ships `IreeMoonshineStream` (PR #450, released with 0.56.2). Until that
- * release is on Maven Central, build with `-PmoonshineRuntimeVersion=0.56.2-SNAPSHOT -PuseMavenLocal=true` against a
- * snapshot published from that branch (`:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=0.56.2-SNAPSHOT`).
+ * The SKaiNET-transformers runtime that ships `IreeMoonshineStream` (PR #450, first released with 0.56.2). To try an
+ * unreleased runtime, build with `-PmoonshineRuntimeVersion=<x>-SNAPSHOT -PuseMavenLocal=true` against a snapshot
+ * published from its branch (`:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=<x>-SNAPSHOT`).
  */
-val moonshineRuntimeVersion = providers.gradleProperty("moonshineRuntimeVersion").getOrElse("0.56.2")
+val moonshineRuntimeVersion = providers.gradleProperty("moonshineRuntimeVersion").getOrElse("0.62.0")
 
 kotlin {
     explicitApi()
@@ -48,8 +48,7 @@ kotlin {
             implementation(libs.kotlin.test)
         }
         androidMain.dependencies {
-            // IreeMoonshineStream + libskainet_moonshine_stream.so (both ABIs): SKaiNET-transformers PR #450, released with 0.56.2.
-            // UNTIL 0.56.2 IS ON MAVEN CENTRAL: the snapshot published to mavenLocal from that branch.
+            // IreeMoonshineStream + libskainet_moonshine_stream.so (both ABIs): SKaiNET-transformers PR #450, released since 0.56.2.
             api("sk.ainet.transformers:skainet-transformers-runtime-iree-android:$moonshineRuntimeVersion")
         }
     }

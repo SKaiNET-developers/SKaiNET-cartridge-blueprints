@@ -16,7 +16,7 @@ catalog**. You materialize it into a cartridge with *your* profile.
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, catalog, prompt and the resolve loop are common code; a **runtime binding exists for Android** (see *Platforms*) |
 | Targets | `vulkan-armv7` (IREE `vulkan-spirv`, `valhall4`), `cpu-armv7` (IREE `llvm-cpu`, arm32) — Android `armeabi-v7a`; `vulkan-arm64` (`vulkan-spirv`, `valhall4`), `cpu-arm64` (`llvm-cpu`, aarch64) — Android `arm64-v8a`; `cpu-sl26xx` (`llvm-cpu`, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules) — Linux aarch64 |
 | Tool catalog | an **input** you supply ([schema](schema/tool-catalog.schema.json)); [`samples/toy-catalog.json`](samples/toy-catalog.json) is a three-function toy |
-| Toolchain | SKaiNET 0.56.0, SKaiNET-transformers 0.56.0, IREE tools 3.11.0 |
+| Toolchain | SKaiNET 0.61.0, SKaiNET-transformers 0.62.0, IREE tools 3.11.0 |
 
 ## What you will build
 
@@ -83,7 +83,7 @@ redirects the download — the digest stays the blueprint's.
 ```
 
 Each task runs the released Kotlin exporter, `FunctionGemmaExportCli` from
-`sk.ainet.transformers:skainet-transformers-inference-functiongemma:0.56.0`, resolved from Maven Central. It loads
+`sk.ainet.transformers:skainet-transformers-inference-functiongemma:0.62.0`, resolved from Maven Central. It loads
 the GGUF with SKaiNET's GGUF reader, traces the model in the SKaiNET DSL and writes, per graph,
 `gemma-<graph>.mlir` (StableHLO) and `gemma-<graph>.safetensors` (the weights, *external* to the module).
 
@@ -102,7 +102,9 @@ in the exporter and is *not* used here; an int8 variant would be a different blu
 
 Open a `.mlir`: look for `stablehlo.` operations, and at the module header for the `skainet.schedule` attribute —
 `parallel_dims = ["batch", "heads"]` per attention, structure only, never a core count. Apart from that header the
-0.56.0 export of this model is line-for-line the module the original cartridge was built from.
+0.56.0 export of this model is line-for-line the module the original cartridge was built from; the 0.62.0 export
+differs from it only in SSA value names and, in `prefill_with_past`, the order of two independent ops (same op
+multiset), with byte-identical parameter archives.
 
 ## Step 4 — Move the embedding lookup to the host (`convert`: host-gather)
 
@@ -171,7 +173,7 @@ export CARTRIDGE_SIGNING_KEY="$(cat ~/keys/my-dev-key.pem)"      # openssl genpk
 ```
 
 - **Runtime** — `libskainet_iree_kv.so` for the target ABI is taken from the published
-  `skainet-transformers-runtime-iree-android:0.56.0`; its source is `llm-runtime/iree-android/native` in
+  `skainet-transformers-runtime-iree-android:0.62.0`; its source is `llm-runtime/iree-android/native` in
   SKaiNET-transformers.
 - **Measure** — the first run stops with *"No `performance` for the descriptor"*. Push the pack to your device, run
   your utterances through `FunctionGemmaNluCartridge`, and put what you measured into the profile. The blueprint's

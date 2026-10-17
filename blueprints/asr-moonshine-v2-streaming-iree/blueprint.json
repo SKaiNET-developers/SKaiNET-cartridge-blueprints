@@ -109,11 +109,11 @@
   ],
   "toolchain": {
     "skainet": {
-      "version": "0.56.0",
+      "version": "0.61.0",
       "coordinates": "sk.ainet:skainet-bom"
     },
     "skainet-transformers": {
-      "version": "0.56.1",
+      "version": "0.62.0",
       "coordinates": "sk.ainet.transformers:skainet-transformers-inference-moonshine",
       "description": "MoonshineV2ExportCli: Hugging Face snapshot -> StableHLO graphs + tables (Kotlin)"
     },
@@ -128,7 +128,7 @@
       "description": "Synaptics Torq-fork iree-compile (SKaiNET-embedded-vendors synaptics-torq/docker) for SL26xx boards: their runtime rejects upstream-IREE modules, so targets with params.toolchain = iree-tools-torq compile here; parameters still come from iree-tools (shared .irpa format)"
     },
     "iree-android-runtime": {
-      "version": "0.56.2",
+      "version": "0.62.0",
       "coordinates": "sk.ainet.transformers:skainet-transformers-runtime-iree-android",
       "description": "libskainet_moonshine_stream.so + IreeMoonshineStream, built and published by SKaiNET-transformers from llm-runtime/iree-android/native"
     },
