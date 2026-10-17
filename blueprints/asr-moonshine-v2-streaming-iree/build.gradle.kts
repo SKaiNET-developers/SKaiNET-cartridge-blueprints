@@ -1,6 +1,8 @@
 import sk.ainet.cartridge.blueprint.gradle.Conv1dIm2colTask
 import sk.ainet.cartridge.blueprint.gradle.IreeCompileTask
 import sk.ainet.cartridge.blueprint.gradle.IreeExportParametersTask
+import sk.ainet.cartridge.blueprint.gradle.Int8WeightsTask
+import sk.ainet.cartridge.blueprint.steps.Int8WeightsRewrite
 
 // Blueprint: streaming speech-to-text with Moonshine v2 (tiny, en + de), IREE on Vulkan or CPU.
 //
@@ -125,22 +127,37 @@ for ((language, source) in flavors) {
         output.set(work.map { it.file("convert/$language/frontend-im2col.mlir") })
     }
     val useIm2col = selected.map { it.params["conv1d_im2col"] == "true" }
+    // graphs whose large matrices go int8 (params.int8_weights = "encoder,adapter,…")
+    val int8Graphs = selected.map { t -> t.params["int8_weights"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
 
     // compile — each graph → .vmfb for the profile's target; the decoder graphs reference the archive.
     for (graph in graphs) {
         val g = graph.split('_').joinToString("") { it.replaceFirstChar(Char::uppercase) }
         val outName = if (graph == "with_past") "step" else graph
+        val source = if (graph == "frontend") {
+            useIm2col.flatMap { if (it) im2col.flatMap { t -> t.output } else exportDir.map { d -> d.file("frontend.mlir") } }
+        } else {
+            exportDir.map { it.file("$graph.mlir") }
+        }
+        val sourceTasks = if (graph == "frontend") useIm2col.map { if (it) listOf(im2col) else emptyList() } else provider { emptyList() }
+
+        // convert (graphs listed in params.int8_weights) — weight-only int8, dequantized in the graph.
+        val int8 = tasks.register<Int8WeightsTask>("int8$lang$g") {
+            group = "cartridge blueprint steps"
+            dependsOn(export, sourceTasks)
+            input.set(source)
+            output.set(work.map { it.file("convert/$language/$graph-int8.mlir") })
+        }
+        val useInt8 = int8Graphs.map { graph in it }
+
         // A target may name its own compiler (params.toolchain): SL26xx boards need the Torq-fork compiler.
         val compile = tasks.register<IreeCompileTask>("compile$lang$g") {
             group = "cartridge blueprint steps"
             image.set(selected.map { it.image(it.params["toolchain"] ?: "iree-tools") })
-            dependsOn(export)
-            if (graph == "frontend") {
-                dependsOn(useIm2col.map { if (it) listOf(im2col) else emptyList() })
-                input.set(useIm2col.flatMap { if (it) im2col.flatMap { t -> t.output } else exportDir.map { d -> d.file("frontend.mlir") } })
-            } else {
-                input.set(exportDir.map { it.file("$graph.mlir") })
-            }
+            dependsOn(export, sourceTasks, useInt8.map { if (it) listOf(int8) else emptyList() })
+            input.set(useInt8.flatMap { if (it) int8.flatMap { t -> t.output } else source })
+            // without hoisting and const-eval, so the dequantization is not folded back into f32 constants
+            extraArgs.set(useInt8.map { if (it) Int8WeightsRewrite.COMPILE_FLAGS else emptyList() })
             backend.set(selected.map { it.param("backend") })
             target.set(selected.map { it.param("iree_target") })
             if (graph == "prefill" || graph == "with_past") parameterScope.set("model")

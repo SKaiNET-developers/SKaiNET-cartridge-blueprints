@@ -69,7 +69,8 @@ runtime's compiled-in streaming geometry and are fixed in `blueprint.json`:
 | `MOONSHINE_ENC_FRAMES` | 64 | encoder / adapter window, 1.28 s |
 | `MOONSHINE_MAX_MEM` | 256 | decoder memory, padded and masked: 5.12 s of speech per utterance |
 
-Numerics: fp32 throughout; nothing is quantized. The export fails if a tensor of the checkpoint was not used.
+Numerics: fp32 throughout; nothing is quantized at export. The export fails if a tensor of the checkpoint was not used.
+A target can ask for int8 weights afterwards (Step 5).
 
 ## Step 4 — The parameter archive (`convert`: IREE tools)
 
@@ -95,6 +96,18 @@ Vulkan: `iree-compile --iree-hal-target-backends=vulkan-spirv --iree-vulkan-targ
 `--iree-hal-target-backends=llvm-cpu --iree-llvmcpu-target-triple=armv7a-linux-androideabi29 --iree-llvmcpu-target-cpu=cortex-a55
 --iree-llvmcpu-target-cpu-features=+neon --iree-llvmcpu-link-embedded=false --iree-llvmcpu-link-static=false
 --iree-llvmcpu-stack-allocation-limit=1048576` (with a clang linker wrapper for the Android triple).
+
+Two `convert` rewrites run before the compile when the target asks for them:
+
+- `params.conv1d_im2col = "true"`: the frontend's two strided 1-D convolutions as im2col + one matmul each, same
+  arithmetic (`im2colFrontend<Lang>`).
+- `params.int8_weights = "encoder,adapter,prefill,with_past"` (the graphs to rewrite): every rank-2 f32 constant with at
+  least 16384 elements becomes int8 with one symmetric scale per row, dequantized in the graph (`int8<Lang><Graph>`).
+  Those graphs compile with `--iree-opt-const-expr-hoisting=false --iree-opt-const-eval=false`, so the weights stay
+  int8 inside the `.vmfb`; the decoder graphs then no longer read the parameter archive (the pack still carries it).
+
+`cpu-sl26xx` sets both. On its Cortex-A55 the int8 weights take the streaming real-time factor from 1.48 to 0.95,
+with identical finals on 16 test clips.
 
 ## Step 6 — Runtime, measure, pack, sign
 
