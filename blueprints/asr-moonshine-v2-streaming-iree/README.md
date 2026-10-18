@@ -17,7 +17,7 @@ materialize it into a cartridge with *your* profile.
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, pack locator and language selection are common code; a **runtime binding exists for Android** (see *Platforms*) |
 | Flavors | `en`, `de` — one language per flavor; a profile selects one or both |
 | Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`); `cpu-sl26xx` (Linux aarch64, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules) |
-| Toolchain | SKaiNET 0.61.0, SKaiNET-transformers 0.62.0 (exporter and runtime), IREE tools 3.11.0 |
+| Toolchain | SKaiNET 0.61.0, SKaiNET-transformers 0.62.2 (exporter and runtime), IREE tools 3.11.0 |
 
 ## What you will build
 

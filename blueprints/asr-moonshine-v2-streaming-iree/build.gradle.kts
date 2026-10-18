@@ -25,7 +25,7 @@ plugins {
  * unreleased runtime, build with `-PmoonshineRuntimeVersion=<x>-SNAPSHOT -PuseMavenLocal=true` against a snapshot
  * published from its branch (`:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=<x>-SNAPSHOT`).
  */
-val moonshineRuntimeVersion = providers.gradleProperty("moonshineRuntimeVersion").getOrElse("0.62.0")
+val moonshineRuntimeVersion = providers.gradleProperty("moonshineRuntimeVersion").getOrElse("0.62.2")
 
 kotlin {
     explicitApi()
