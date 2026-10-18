@@ -1,0 +1,9 @@
+{
+  "catalog": "toy-tools.v1",
+  "note": "A smoke check that the materialized cartridge calls functions at all — three utterances, expected function names only. It is not an accuracy benchmark; measure quality with your own catalog and your own utterances.",
+  "cases": [
+    { "utterance": "set a timer for ten minutes", "expect": "set_timer" },
+    { "utterance": "turn the lamp off", "expect": "toggle_lamp" },
+    { "utterance": "roll the dice", "expect": "roll_dice" }
+  ]
+}

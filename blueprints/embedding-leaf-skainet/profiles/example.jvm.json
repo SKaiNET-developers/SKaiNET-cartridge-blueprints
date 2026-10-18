@@ -1,0 +1,11 @@
+{
+  "blueprint": {
+    "id": "embedding-leaf-skainet",
+    "version": "0.1.0"
+  },
+  "target": "jvm",
+  "cartridge": {
+    "id": "embedding-leaf-skainet-jvm",
+    "version": "0.1.0"
+  }
+}
