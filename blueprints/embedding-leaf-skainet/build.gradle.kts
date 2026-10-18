@@ -37,13 +37,13 @@ kotlin {
 
             // The BOM is api() because llm-api below is: an implementation-scoped platform
             // would not reach consumers' metadata, leaving the api dependency versionless.
-            api(project.dependencies.platform("sk.ainet.transformers:skainet-transformers-bom:0.57.1"))
+            api(project.dependencies.platform("sk.ainet.transformers:skainet-transformers-bom:0.62.2"))
             // llm-api's EmbeddingModel SPI is api(): the engine implements it alongside
             // embedding/v1, which is the convergence the profile was designed around.
             api("sk.ainet.transformers:skainet-transformers-api")
             implementation("sk.ainet.transformers:skainet-transformers-inference-bert")
 
-            implementation(project.dependencies.platform("sk.ainet:skainet-bom:0.57.0"))
+            implementation(project.dependencies.platform("sk.ainet:skainet-bom:0.61.0"))
             implementation("sk.ainet.core:skainet-lang-core")
             implementation("sk.ainet.core:skainet-backend-cpu")
             implementation("sk.ainet.core:skainet-io-core")
