@@ -75,7 +75,7 @@ class FunctionGemmaEngineTest {
     }
 
     @Test
-    fun `forced tokens go to the model in chunk calls - same call, fewer calls`() {
+    fun `forced tokens go to the model in chunk calls - same call in fewer calls`() {
         val answer = "<start_function_call>call:toggle_lamp{level:<escape>dim<escape>,state:<escape>on<escape>}<end_function_call>"
         fun run(config: FunctionGemmaEngine.Config): Pair<NluResolution.Call, ScriptedBackend> {
             val tok = WordTokenizer()
