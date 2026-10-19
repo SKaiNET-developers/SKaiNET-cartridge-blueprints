@@ -65,11 +65,18 @@ public data class ToolCatalog(
      */
     public fun snapName(raw: String?): String? {
         if (raw == null) return null
-        if (raw in names) return raw
-        val norm = normalize(raw)
-        val byNorm = functions.associate { normalize(it.name) to it.name }
-        byNorm[norm]?.let { return it }
-        return byNorm.keys.map { it to levenshtein(it, norm) }.filter { it.second <= 2 }.minByOrNull { it.second }?.let { byNorm[it.first] }
+        return snap(raw, names)
+    }
+
+    /**
+     * Snap the arguments of a call to [function] to the catalog: a value of an enum parameter that is not one of its
+     * values becomes the one it clearly means — same after case and punctuation, or the only value it is a prefix of
+     * (or that is a prefix of it, at least 3 characters: `close` → `closed`), or one edit away for values of 4 or
+     * more characters. Short values are not guessed (`up` stays `up`, not `on`); everything else is kept as is.
+     */
+    public fun snapArgs(function: String, args: Map<String, String>): Map<String, String> {
+        val params = functions.firstOrNull { it.name == function }?.parameters ?: return args
+        return args.mapValues { (k, v) -> params[k]?.enum?.let { e -> snapValue(v, e) } ?: v }
     }
 
     public companion object {
@@ -78,6 +85,25 @@ public data class ToolCatalog(
         public fun parse(text: String): ToolCatalog = json.decodeFromString(serializer(), text)
 
         public fun load(file: Path): ToolCatalog = parse(PackDir.readText(file))
+
+        /** Exact, then case- and punctuation-insensitive, then edit distance <= 2 on the normalized form; else `null`. */
+        private fun snap(raw: String, choices: Collection<String>): String? {
+            if (raw in choices) return raw
+            val norm = normalize(raw)
+            val byNorm = choices.associateBy { normalize(it) }
+            byNorm[norm]?.let { return it }
+            return byNorm.keys.map { it to levenshtein(it, norm) }.filter { it.second <= 2 }.minByOrNull { it.second }?.let { byNorm[it.first] }
+        }
+
+        private fun snapValue(raw: String, choices: List<String>): String? {
+            if (raw in choices) return raw
+            val norm = normalize(raw)
+            val byNorm = choices.associateBy { normalize(it) }
+            byNorm[norm]?.let { return it }
+            byNorm.filterKeys { minOf(it.length, norm.length) >= 3 && (it.startsWith(norm) || norm.startsWith(it)) }.values.singleOrNull()?.let { return it }
+            if (norm.length >= 4) byNorm.filterKeys { levenshtein(it, norm) == 1 }.values.singleOrNull()?.let { return it }
+            return null
+        }
 
         private fun normalize(s: String): String = s.lowercase().replace(Regex("[^a-z0-9_]"), "").replace(Regex("_+"), "_")
 

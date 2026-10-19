@@ -1,14 +1,14 @@
 [versions]
-# Kotlin follows the pinned SKaiNET release rather than moving on its own: 0.57.0 is compiled with
+# Kotlin follows the pinned SKaiNET release rather than moving on its own: 0.61.0 is compiled with
 # 2.4.20, and reading KMP metadata written by a newer Kotlin than the consumer uses does not work.
 # The blueprint plugin's own build script hard-codes the same version twice — keep all three in step.
 kotlin = "2.4.20"
 kotlinxSerializationJson = "1.11.0"
 jsonSchemaValidator = "0.5.5"
-# SKaiNET core and skainet-transformers ship in lock-step, so these two are always the same version.
-# They were not: core sat at 0.56.0 while transformers sat at 0.56.1, one release apart.
-skainet = "0.57.0"
-transformers = "0.57.0"
+# SKaiNET core and skainet-transformers move together: a transformers release carries at least the engine's
+# minor and may advance its own patch (0.62.2 is a transformers-only fix against engine 0.61.0).
+skainet = "0.61.0"
+transformers = "0.62.2"
 agp = "9.4.1"
 androidCompileSdk = "36"
 androidMinSdk = "29"

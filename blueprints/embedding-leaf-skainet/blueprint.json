@@ -41,7 +41,7 @@
       "max_sequence_tokens": 512,
       "runtime_hint": {
         "runtime": "skainet-transformers",
-        "version": "0.57.1",
+        "version": "0.62.2",
         "execution": "eager",
         "note": "No role:runtime artifact. Eager execution of the BERT DSL network on the SKaiNET CPU backend (jdk.incubator.vector on JVM, Accelerate on Apple targets); the Kotlin library compiled per target is the runtime. Golden verification budgets 2e-3 per dimension across backends."
       }
@@ -94,12 +94,12 @@
   ],
   "toolchain": {
     "skainet-transformers": {
-      "version": "0.57.1",
+      "version": "0.62.2",
       "coordinates": "sk.ainet.transformers:skainet-transformers-bom",
       "description": "inference-bert (encoder, tokenizer, config parsing) and llm-api (EmbeddingModel SPI)"
     },
     "skainet": {
-      "version": "0.57.0",
+      "version": "0.61.0",
       "coordinates": "sk.ainet:skainet-bom",
       "description": "CPU backend, safetensors loader, random-access file sources"
     },

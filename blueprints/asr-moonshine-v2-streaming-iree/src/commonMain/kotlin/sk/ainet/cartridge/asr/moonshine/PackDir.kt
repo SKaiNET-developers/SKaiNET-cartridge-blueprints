@@ -36,23 +36,26 @@ public class PackDir(public val root: Path) {
     public val languages: List<String>
         get() = descriptor["attributes"]?.jsonObject?.get("languages")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
 
-    /** The eight model files of [language], by role directory: five graphs, the parameter archive, the two tables. */
+    /**
+     * The model files of [language], by role directory: five graphs, the parameter archive, the two tables. The
+     * archive is absent when the target's decoder graphs carry their weights inline (int8 weights, see the blueprint).
+     */
     public fun model(language: String): ModelFiles = ModelFiles(
         frontendVmfb = file("artifacts/model/$language/frontend.vmfb"),
         encoderVmfb = file("artifacts/model/$language/encoder.vmfb"),
         adapterVmfb = file("artifacts/model/$language/adapter.vmfb"),
         prefillVmfb = file("artifacts/model/$language/prefill.vmfb"),
         stepVmfb = file("artifacts/model/$language/step.vmfb"),
-        paramsIrpa = file("artifacts/weights/$language/params.irpa"),
+        paramsIrpa = Path(root, "artifacts/weights/$language/params.irpa").takeIf { SystemFileSystem.exists(it) },
         vocabBin = file("artifacts/tokenizer/$language/vocab.bin"),
         decEmbedBin = file("artifacts/weights/$language/dec_embed.bin"),
     )
 
     public data class ModelFiles(
         val frontendVmfb: Path, val encoderVmfb: Path, val adapterVmfb: Path, val prefillVmfb: Path, val stepVmfb: Path,
-        val paramsIrpa: Path, val vocabBin: Path, val decEmbedBin: Path,
+        val paramsIrpa: Path?, val vocabBin: Path, val decEmbedBin: Path,
     ) {
-        public val all: List<Path> get() = listOf(frontendVmfb, encoderVmfb, adapterVmfb, prefillVmfb, stepVmfb, paramsIrpa, vocabBin, decEmbedBin)
+        public val all: List<Path> get() = listOfNotNull(frontendVmfb, encoderVmfb, adapterVmfb, prefillVmfb, stepVmfb, paramsIrpa, vocabBin, decEmbedBin)
     }
 
     private fun file(relative: String): Path = Path(root, relative).also {

@@ -1,5 +1,8 @@
+import sk.ainet.cartridge.blueprint.gradle.Conv1dIm2colTask
 import sk.ainet.cartridge.blueprint.gradle.IreeCompileTask
 import sk.ainet.cartridge.blueprint.gradle.IreeExportParametersTask
+import sk.ainet.cartridge.blueprint.gradle.Int8WeightsTask
+import sk.ainet.cartridge.blueprint.steps.Int8WeightsRewrite
 
 // Blueprint: streaming speech-to-text with Moonshine v2 (tiny, en + de), IREE on Vulkan or CPU.
 //
@@ -18,11 +21,11 @@ plugins {
 }
 
 /**
- * The SKaiNET-transformers runtime that ships `IreeMoonshineStream` (PR #450, released with 0.56.2). Until that
- * release is on Maven Central, build with `-PmoonshineRuntimeVersion=0.56.2-SNAPSHOT -PuseMavenLocal=true` against a
- * snapshot published from that branch (`:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=0.56.2-SNAPSHOT`).
+ * The SKaiNET-transformers runtime that ships `IreeMoonshineStream` (PR #450, first released with 0.56.2). To try an
+ * unreleased runtime, build with `-PmoonshineRuntimeVersion=<x>-SNAPSHOT -PuseMavenLocal=true` against a snapshot
+ * published from its branch (`:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=<x>-SNAPSHOT`).
  */
-val moonshineRuntimeVersion = providers.gradleProperty("moonshineRuntimeVersion").getOrElse("0.56.2")
+val moonshineRuntimeVersion = providers.gradleProperty("moonshineRuntimeVersion").getOrElse("0.62.2")
 
 kotlin {
     explicitApi()
@@ -47,8 +50,7 @@ kotlin {
             implementation(libs.kotlin.test)
         }
         androidMain.dependencies {
-            // IreeMoonshineStream + libskainet_moonshine_stream.so (both ABIs): SKaiNET-transformers PR #450, released with 0.56.2.
-            // UNTIL 0.56.2 IS ON MAVEN CENTRAL: the snapshot published to mavenLocal from that branch.
+            // IreeMoonshineStream + libskainet_moonshine_stream.so (both ABIs): SKaiNET-transformers PR #450, released since 0.56.2.
             api("sk.ainet.transformers:skainet-transformers-runtime-iree-android:$moonshineRuntimeVersion")
         }
     }
@@ -117,24 +119,63 @@ for ((language, source) in flavors) {
         scope.set("model")
     }
 
+    // convert (targets with params.conv1d_im2col = "true") — the frontend's 1-D convolutions as im2col + matmul.
+    val im2col = tasks.register<Conv1dIm2colTask>("im2colFrontend$lang") {
+        group = "cartridge blueprint steps"
+        dependsOn(export)
+        input.set(exportDir.map { it.file("frontend.mlir") })
+        output.set(work.map { it.file("convert/$language/frontend-im2col.mlir") })
+    }
+    val useIm2col = selected.map { it.params["conv1d_im2col"] == "true" }
+    // graphs whose large matrices go int8 (params.int8_weights = "encoder,adapter,…")
+    val int8Graphs = selected.map { t -> t.params["int8_weights"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
+
     // compile — each graph → .vmfb for the profile's target; the decoder graphs reference the archive.
     for (graph in graphs) {
         val g = graph.split('_').joinToString("") { it.replaceFirstChar(Char::uppercase) }
         val outName = if (graph == "with_past") "step" else graph
+        val source = if (graph == "frontend") {
+            useIm2col.flatMap { if (it) im2col.flatMap { t -> t.output } else exportDir.map { d -> d.file("frontend.mlir") } }
+        } else {
+            exportDir.map { it.file("$graph.mlir") }
+        }
+        val sourceTasks = if (graph == "frontend") useIm2col.map { if (it) listOf(im2col) else emptyList() } else provider { emptyList() }
+
+        // convert (graphs listed in params.int8_weights) — weight-only int8, dequantized in the graph.
+        val int8 = tasks.register<Int8WeightsTask>("int8$lang$g") {
+            group = "cartridge blueprint steps"
+            dependsOn(export, sourceTasks)
+            input.set(source)
+            output.set(work.map { it.file("convert/$language/$graph-int8.mlir") })
+        }
+        val useInt8 = int8Graphs.map { graph in it }
+
+        // A target may name its own compiler (params.toolchain): SL26xx boards need the Torq-fork compiler.
         val compile = tasks.register<IreeCompileTask>("compile$lang$g") {
             group = "cartridge blueprint steps"
-            image.set(selected.map { it.image("iree-tools") })
-            dependsOn(export)
-            input.set(exportDir.map { it.file("$graph.mlir") })
+            image.set(selected.map { it.image(it.params["toolchain"] ?: "iree-tools") })
+            dependsOn(export, sourceTasks, useInt8.map { if (it) listOf(int8) else emptyList() })
+            input.set(useInt8.flatMap { if (it) int8.flatMap { t -> t.output } else source })
+            // without hoisting and const-eval, so the dequantization is not folded back into f32 constants
+            extraArgs.set(useInt8.map { if (it) Int8WeightsRewrite.COMPILE_FLAGS else emptyList() })
             backend.set(selected.map { it.param("backend") })
             target.set(selected.map { it.param("iree_target") })
-            if (graph == "prefill" || graph == "with_past") parameterScope.set("model")
+            // f32 decoder graphs read their weights from the archive; int8 ones carry them inline
+            if (graph == "prefill" || graph == "with_past") parameterScope.set(useInt8.map { if (it) null else "model" })
             output.set(work.zip(selected) { w, t -> w.file("compile/${t.id}/$language/$outName.vmfb") })
         }
         blueprint.product("$language-$outName-vmfb", compile.flatMap { it.output }, flavor = language)
     }
-    blueprint.product("$language-params-irpa", parameters.flatMap { it.output }, flavor = language)
-    blueprint.product("$language-dec-embed", export.map { exportDir.get().file("dec_embed.bin") }, flavor = language)
+    // The decoder's weight files: the embedding rows, and the archive unless both decoder graphs are int8.
+    val archiveRead = int8Graphs.map { !("prefill" in it && "with_past" in it) }
+    val weights = tasks.register<Sync>("weights$lang") {
+        group = "cartridge blueprint steps"
+        dependsOn(export, archiveRead.map { if (it) listOf(parameters) else emptyList() })
+        from(exportDir.map { it.file("dec_embed.bin") })
+        from(archiveRead.flatMap { if (it) parameters.flatMap { t -> t.output }.map { f -> listOf(f) } else provider { emptyList() } })
+        into(work.map { it.dir("weights/$language") })
+    }
+    blueprint.product("$language-weights", weights.map { work.get().dir("weights/$language") }, flavor = language)
     blueprint.product("$language-vocab", export.map { exportDir.get().file("vocab.bin") }, flavor = language)
 }
 
