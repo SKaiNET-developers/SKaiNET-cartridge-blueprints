@@ -240,7 +240,11 @@
           "name": "whisper-tiny",
           "variant": "iree-fp32-window4s-en",
           "params": 39000000,
-          "checkpoint": "openai/whisper-tiny.en"
+          "checkpoint": "openai/whisper-tiny.en",
+          "upstream": {
+            "source": "https://huggingface.co/openai/whisper-tiny.en",
+            "license": "Apache-2.0"
+          }
         }
       }
     },
@@ -259,7 +263,11 @@
           "name": "whisper-tiny",
           "variant": "iree-fp32-window4s-de",
           "params": 39000000,
-          "checkpoint": "primeline/whisper-tiny-german-1224"
+          "checkpoint": "primeline/whisper-tiny-german-1224",
+          "upstream": {
+            "source": "https://huggingface.co/primeline/whisper-tiny-german-1224",
+            "license": "Apache-2.0"
+          }
         }
       }
     }
