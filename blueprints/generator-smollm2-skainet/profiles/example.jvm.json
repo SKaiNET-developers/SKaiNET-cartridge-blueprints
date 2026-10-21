@@ -1,0 +1,11 @@
+{
+  "blueprint": {
+    "id": "generator-smollm2-skainet",
+    "version": "0.1.0"
+  },
+  "target": "jvm",
+  "cartridge": {
+    "id": "generator-smollm2-skainet-jvm",
+    "version": "0.1.0"
+  }
+}

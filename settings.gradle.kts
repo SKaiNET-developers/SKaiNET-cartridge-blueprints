@@ -27,10 +27,12 @@ rootProject.name = "SKaiNET-cartridge-blueprints"
 
 include(":blueprints:nlu-functiongemma-270m-iree")
 include(":blueprints:asr-moonshine-v2-streaming-iree")
+include(":blueprints:generator-smollm2-skainet")
 include(":blueprints:asr-whisper-iree")
 include(":blueprints:embedding-leaf-skainet")
-include(":profiles:embedding-v1")
 include(":blueprints:nlu-qwen-iree")
+include(":profiles:embedding-v1")
+include(":profiles:llm-v1")
 include(":profiles:yolo-v1")
 // detection-yolov8-iree's SKaiNET side is released (0.62.1 ships skainet-data-media), but its Android
 // runtime binding needs IreeModuleRunner, which no SKaiNET-transformers release carries yet (PR #513,

@@ -1,0 +1,260 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "generator-smollm2-skainet",
+  "version": "0.1.0",
+  "description": "SmolLM2-135M-Instruct text generation on SKaiNET-transformers' commonMain llama decoder path in eager mode: byte-level BPE tokenize -> 30-layer llama (576 hidden, 9 heads / 3 KV heads GQA, tied embeddings, RoPE base 100000) -> stop-token-aware greedy/sampled decode. The first task 'generation' blueprint and the first llm/v1 (ADR-011) implementation - the profile's events (Ready -> Delta* -> Final) map onto the ABI's PARTIAL/FINAL pull exactly as ADR-007 laid out, and the checkpoint's own ChatML template renders inside the cartridge, never in the host. Unlike embedding-leaf, upstream publishes the whole target matrix for the llama path, so this is the first neural cartridge with full Apple coverage including iosArm64.",
+  "license": "MIT",
+  "descriptor_template": {
+    "family": "llama-decoder",
+    "execution_mode": "eager",
+    "modality": "text",
+    "task": "generation",
+    "model": {
+      "name": "smollm2-135m-instruct",
+      "variant": "llama-30l-576h-gqa3-tied-fp32",
+      "params": 135000000
+    },
+    "io": {
+      "mode": "stream",
+      "input": {
+        "dtype": "utf8-text",
+        "shape": [
+          null
+        ]
+      },
+      "output": {
+        "dtype": "utf8-text",
+        "shape": [
+          null
+        ]
+      }
+    },
+    "attributes": {
+      "task_profile": "llm/v1",
+      "context_window_tokens": 8192,
+      "vocab_size": 49152,
+      "supports_tool_calling": false,
+      "supports_json_mode": false,
+      "temperature": 0.2,
+      "top_p": 0.9,
+      "chat_template": "chatml",
+      "stop_token_ids": [
+        2
+      ],
+      "runtime_hint": {
+        "runtime": "skainet-transformers",
+        "version": "0.57.1",
+        "execution": "eager",
+        "note": "No role:runtime artifact. Eager execution of the llama DSL network on the SKaiNET CPU backend (jdk.incubator.vector on JVM, Accelerate on Apple targets); the Kotlin library compiled per target is the runtime. Greedy decode is verified token-for-token across backends - an argmax has no tolerance budget."
+      }
+    },
+    "requirements": {
+      "memory_mb": 1024
+    }
+  },
+  "sources": [
+    {
+      "name": "smollm2-135m-instruct",
+      "role": "weights",
+      "uri": "https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct",
+      "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+      "files": [
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:5af571cbf074e6d21a03528d2330792e532ca608f24ac70a143f6b369968ab8c",
+          "size": 269060552
+        },
+        {
+          "path": "config.json",
+          "digest": "sha256:8eb740e8bbe4cff95ea7b4588d17a2432deb16e8075bc5828ff7ba9be94d982a",
+          "size": 861
+        },
+        {
+          "path": "generation_config.json",
+          "digest": "sha256:87b916edaaab66b3899b9d0dd0752727dff6666686da0504d89ae0a6e055a013",
+          "size": 132
+        },
+        {
+          "path": "tokenizer.json",
+          "digest": "sha256:9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c",
+          "size": 2104556
+        },
+        {
+          "path": "tokenizer_config.json",
+          "digest": "sha256:4ec77d44f62efeb38d7e044a1db318f6a939438425312dfa333b8382dbad98df",
+          "size": 3764
+        },
+        {
+          "path": "special_tokens_map.json",
+          "digest": "sha256:2b7379f3ae813529281a5c602bc5a11c1d4e0a99107aaa597fe936c1e813ca52",
+          "size": 655
+        }
+      ],
+      "license": "Apache-2.0",
+      "redistribution": "allowed"
+    }
+  ],
+  "toolchain": {
+    "skainet-transformers": {
+      "version": "0.57.1",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-bom",
+      "description": "transformers-core (OptimizedLLMRuntime, generateUntilStop, tokenizer factory) and inference-llama (llama network DSL, config parser, SafeTensors mapping)"
+    },
+    "skainet": {
+      "version": "0.57.0",
+      "coordinates": "sk.ainet:skainet-bom",
+      "description": "CPU backend, safetensors loader, random-access file sources"
+    },
+    "llm-v1": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.profiles:llm-v1",
+      "description": "The llm/v1 task profile contract, ADR-011 (this repository, profiles/llm-v1)"
+    },
+    "blueprint-plugin": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.blueprint"
+    }
+  },
+  "targets": [
+    {
+      "id": "jvm",
+      "target": {
+        "hardware": "any JVM 21 host",
+        "accelerator": "none (SIMD via jdk.incubator.vector when offered)",
+        "abi": "jvm-bytecode-21"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 1024
+      }
+    },
+    {
+      "id": "android-arm64",
+      "target": {
+        "hardware": "arm64 Android device",
+        "abi": "arm64-v8a",
+        "accelerator": "none"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 1024,
+        "os": {
+          "name": "android",
+          "min_api": 26
+        }
+      }
+    },
+    {
+      "id": "ios-arm64",
+      "target": {
+        "hardware": "arm64 iPhone/iPad",
+        "abi": "arm64-apple-ios",
+        "accelerator": "Accelerate (ARM NEON + AMX) via the SKaiNET CPU backend"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 1024,
+        "os": {
+          "name": "ios",
+          "min_api": 14
+        }
+      }
+    },
+    {
+      "id": "macos-arm64",
+      "target": {
+        "hardware": "Apple Silicon Mac",
+        "accelerator": "Accelerate (ARM NEON + AMX) via the SKaiNET CPU backend",
+        "abi": "arm64-apple-macos"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 1024,
+        "os": {
+          "name": "macos",
+          "min_api": 13
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "description": "Downloads the pinned Hugging Face snapshot (revision + sha256 per file above) into the shared SKaiNET model cache (~/.cache/skainet/models/HuggingFaceTB_SmolLM2-135M-Instruct).",
+      "tool": "hf-snapshot-fetch",
+      "produces": [
+        "snapshot"
+      ]
+    },
+    {
+      "id": "goldens",
+      "kind": "measure",
+      "description": "Regenerates the golden greedy transcript (samples/golden-transcript.json) through the loaded decoder on JVM and fails on any drift: the fixed conversation's greedy token ids ARE the cartridge's behavioral identity. commonTest re-asserts them token-for-token per target - greedy argmax admits no cross-backend tolerance budget.",
+      "tool": "gradle:jvmTest -PregenerateGoldens=true",
+      "uses": [
+        "snapshot"
+      ],
+      "produces": [
+        "goldens"
+      ]
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "sk.ainet.cartridge.blueprint:materializeCartridge",
+      "uses": [
+        "snapshot",
+        "goldens"
+      ],
+      "produces": [
+        "pack"
+      ]
+    },
+    {
+      "id": "sign",
+      "kind": "sign",
+      "tool": "sk.ainet.cartridge.blueprint:materializeCartridge",
+      "uses": [
+        "pack"
+      ],
+      "produces": [
+        "signed-pack"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "from": "snapshot",
+      "role": "weights",
+      "path": "artifacts/model.safetensors",
+      "derived_from": [
+        "smollm2-135m-instruct"
+      ]
+    },
+    {
+      "from": "snapshot",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer.json",
+      "derived_from": [
+        "smollm2-135m-instruct"
+      ]
+    },
+    {
+      "from": "goldens",
+      "role": "calibration",
+      "path": "calibration/golden-transcript.json",
+      "derived_from": [
+        "smollm2-135m-instruct"
+      ]
+    }
+  ],
+  "verification": [
+    {
+      "kind": "golden",
+      "description": "samples/golden-transcript.json pins the greedy decode (token ids and text) of one fixed ChatML conversation; commonTest asserts it token-for-token on every compiled target, so the jdk.incubator.vector and Accelerate backends provably run one decode. Stricter than the embedding cartridges' 2e-3 budget: a flipped argmax IS a behavior change.",
+      "id": "golden-transcript"
+    }
+  ]
+}
