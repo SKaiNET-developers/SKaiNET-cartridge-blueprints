@@ -122,6 +122,11 @@
       "image": "skainet/iree-compiler:3.11.0",
       "description": "IREE tools (StableHLO -> IREE): iree-compile with parameter export"
     },
+    "iree-android-runtime": {
+      "version": "0.62.2",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-runtime-iree-android",
+      "description": "libskainet_whisper_session.so + IreeWhisperSession, built and published by SKaiNET-transformers from llm-runtime/iree-android/native"
+    },
     "blueprint-plugin": {
       "version": "0.1.0",
       "coordinates": "sk.ainet.cartridge.blueprint"
@@ -146,7 +151,9 @@
       "params": {
         "backend": "vulkan",
         "iree_target": "valhall4",
-        "device": "vulkan"
+        "device": "vulkan",
+        "decoder_iree_target": "arm32",
+        "decoder_device": "local-task"
       }
     },
     {
@@ -166,7 +173,9 @@
       "params": {
         "backend": "cpu",
         "iree_target": "arm32",
-        "device": "local-task"
+        "device": "local-task",
+        "decoder_iree_target": "arm32",
+        "decoder_device": "local-task"
       }
     },
     {
@@ -187,7 +196,9 @@
       "params": {
         "backend": "vulkan",
         "iree_target": "valhall4",
-        "device": "vulkan"
+        "device": "vulkan",
+        "decoder_iree_target": "arm64",
+        "decoder_device": "local-task"
       }
     },
     {
@@ -207,7 +218,9 @@
       "params": {
         "backend": "cpu",
         "iree_target": "arm64",
-        "device": "local-task"
+        "device": "local-task",
+        "decoder_iree_target": "arm64",
+        "decoder_device": "local-task"
       }
     }
   ],
@@ -314,7 +327,17 @@
         "de-step-vmfb"
       ],
       "per_target": true,
-      "description": "iree-compile for the target's backend: vulkan-spirv (--iree-vulkan-target) or llvm-cpu. Prefill and step keep their parameter references (scope `model`), resolved against params.irpa at load time."
+      "description": "iree-compile per target: the encoder for the target's backend (vulkan-spirv with --iree-vulkan-target, or llvm-cpu); prefill and step for the CPU of the target's ABI (llvm-cpu, `decoder_iree_target`) on every target — the step graph does not compile for Vulkan with IREE 3.11, and its M = 1 matrix-vector products cost about the same on both. Prefill and step keep their parameter references (scope `model`), resolved against params.irpa at load time."
+    },
+    {
+      "id": "build-runtime",
+      "kind": "build-runtime",
+      "tool": "iree-android-runtime",
+      "produces": [
+        "runtime-so"
+      ],
+      "per_target": true,
+      "description": "libskainet_whisper_session.so for the target ABI, taken from the released SKaiNET-transformers Android runtime AAR (built there from llm-runtime/iree-android/native)."
     },
     {
       "id": "pack",
@@ -336,7 +359,8 @@
         "de-params",
         "de-contract",
         "en-tokenizer",
-        "de-tokenizer"
+        "de-tokenizer",
+        "runtime-so"
       ]
     },
     {
@@ -460,6 +484,12 @@
         "weights-de"
       ],
       "flavor": "de"
+    },
+    {
+      "from": "runtime-so",
+      "role": "runtime",
+      "path": "artifacts/runtime/libskainet_whisper_session.so",
+      "derived_from": []
     }
   ]
 }

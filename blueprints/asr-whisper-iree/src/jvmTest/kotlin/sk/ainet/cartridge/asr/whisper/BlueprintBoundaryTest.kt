@@ -59,7 +59,8 @@ class BlueprintBoundaryTest {
     fun `every product the recipe registers is an output of the blueprint`() {
         val bp = Json.parseToJsonElement(File(dir, "blueprint.json").readText()).jsonObject
         val outputs = bp.getValue("outputs").jsonArray.map { it.jsonObject.getValue("from").jsonPrimitive.content }.toSet()
-        val expected = listOf("en", "de").flatMap { f -> listOf("encoder", "prefill", "step").map { "$f-$it-vmfb" } + listOf("$f-params", "$f-contract", "$f-tokenizer") }.toSet()
+        val expected = listOf("en", "de").flatMap { f -> listOf("encoder", "prefill", "step").map { "$f-$it-vmfb" } + listOf("$f-params", "$f-contract", "$f-tokenizer") }.toSet() +
+            "runtime-so"                                          // the JNI library for the target ABI (build-runtime)
         assertEquals(expected, outputs)
     }
 

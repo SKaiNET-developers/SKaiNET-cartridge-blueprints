@@ -13,17 +13,17 @@ materialize it into a cartridge with *your* profile.
 | Weights | `openai/whisper-tiny.en` @ `87c71024…` (English) and `primeline/whisper-tiny-german-1224` @ `620446ea…` (German, a fine-tune of whisper-tiny): `config.json`, `model.safetensors`, `tokenizer.json`, all pinned by SHA-256 |
 | Weights license | **Apache-2.0** at the publisher for both checkpoints — verified on the model cards 2026-10-21. `redistribution: allowed`: nothing to accept, nothing gated. |
 | Code license | MIT |
-| Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`: the batch contract, the pack locator (with the graph contract) and language selection. **No runtime binding yet** (see *Platforms*) |
+| Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`: the batch contract, the pack locator (with the graph contract), language selection, the detokenizer and the transcript tidy-up; on Android the runtime binding `WhisperAsrCartridge` (see *Platforms*) |
 | Flavors | `en`, `de` — one language per flavor; a profile selects one or both |
 | Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`) |
-| Toolchain | SKaiNET 0.61.0, SKaiNET-transformers with `WhisperExportCli` (exporter), IREE tools 3.11.0 |
+| Toolchain | SKaiNET 0.61.0, SKaiNET-transformers with `WhisperExportCli` (exporter) and `IreeWhisperSession` (Android runtime), SKaiNET-audio 0.2.1 (log-mel), IREE tools 3.11.0 |
 
 ## What you will build
 
 A signed cartridge `pack_dir` holding, per selected language, three compiled graphs (`encoder`, `prefill`, `step`),
 **one** parameter archive with the decoder weights shared by `prefill` and `step`, the graph contract
-(`whisper-contract.json`) and the detokenizer table (`tokenizer.json`) — and a descriptor that states what was
-measured on *your* device.
+(`whisper-contract.json`) and the detokenizer table (`tokenizer.json`); the runtime library for the target's ABI
+(`artifacts/runtime/libskainet_whisper_session.so`) — and a descriptor that states what was measured on *your* device.
 
 ## The model contract
 
@@ -93,10 +93,23 @@ share one archive (deduplicated, byte-identity asserted). Numerics: fp32; nothin
           :blueprints:asr-whisper-iree:compileDeStep -Pprofile=profiles/mine.json
 ```
 
-`iree-compile` for the target's backend (`vulkan-spirv` with `--iree-vulkan-target`, or `llvm-cpu`). The prefill and
-step modules keep their parameter references; a runtime loads `params.irpa` under scope `model`.
+The **encoder** is compiled for the target's backend (`vulkan-spirv` with `--iree-vulkan-target`, or `llvm-cpu`);
+**prefill and step** for the CPU of the target's ABI on every target (`llvm-cpu`, the target's `decoder_iree_target`).
+The step graph does not compile for Vulkan with IREE 3.11, and its M = 1 matrix-vector products cost about the same on
+a GPU and a CPU; the encoder — one large batch over the whole window — is where a GPU pays. The prefill and step
+modules keep their parameter references; a runtime loads `params.irpa` under scope `model`.
 
-## Step 5 — Materialize (`pack`, `sign`)
+## Step 5 — Runtime (`build-runtime`)
+
+```
+./gradlew :blueprints:asr-whisper-iree:extractRuntime -Pprofile=profiles/mine.json
+```
+
+`libskainet_whisper_session.so` for the target's ABI, taken from SKaiNET-transformers' released Android runtime AAR
+(`skainet-transformers-runtime-iree-android`, built there from `llm-runtime/iree-android/native`). Nothing native is
+built here.
+
+## Step 6 — Materialize (`pack`, `sign`)
 
 ```
 ./gradlew :blueprints:asr-whisper-iree:materializeCartridge -Pprofile=profiles/mine.json
@@ -104,12 +117,32 @@ step modules keep their parameter references; a runtime loads `params.irpa` unde
 
 ## Platforms
 
-The API is common code. There is **no released runtime binding** for the whisper contract yet: a host runs the
-three modules with an IREE runtime of its own (`iree-run-module`, the IREE runtime C API, or its own JNI), in the
-order and with the shapes `whisper-contract.json` names. The export's parity test in SKaiNET-transformers does exactly
-that with `iree-run-module` and reproduces the reference greedy transcript from the compiled modules.
+The contract, the pack locator, the detokenizer (`WhisperTokenizer`) and the tidy-up (`Transcript`) are common code.
+On **Android**, `WhisperAsrCartridge` is the runtime binding over SKaiNET-transformers' `IreeWhisperSession`:
+
+```kotlin
+val pack = WhisperAsrCartridge.packFromAssets(context, "whisper")      // or PackDir("/path/to/pack_dir")
+val asr = WhisperAsrCartridge(pack, languageTag = "de")                // encoder on the GPU if the pack targets one
+val text = asr.transcribe(pcm16k)                                     // mono 16 kHz float PCM, up to 4 s
+asr.close()
+```
+
+Per utterance: the audio is padded or cut to the window (as Whisper's reference does — the log-mel of silence, not
+zero features), SKaiNET-audio's Whisper log-mel (`MelConfig.whisper(400)`, Slaney filterbank), the encoder on the
+pack's device, prefill and greedy steps on the CPU, then `tokenizer.json`.
+
+**Repetition.** Greedy decoding over the short window can transcribe the utterance and then start it again instead of
+ending: on the German reference clip end-of-text is the runner-up after the full stop, and the PyTorch model loops the
+same way. The runtime stops at the first repeated three-token sequence; `Transcript.dropRepeat` then drops what is left
+of the restart (`Fern sie ihr lauter. F` → `Fern sie ihr lauter.`).
+
+Elsewhere a host runs the three modules with an IREE runtime of its own, in the order and with the shapes
+`whisper-contract.json` names.
 
 ## Verification
 
 The export is checked in SKaiNET-transformers against the German checkpoint pinned here: encoder cosine 0.99999 to
-the reference pipeline, and the reference greedy tokens reproduced from the compiled modules.
+the reference pipeline, and the reference greedy tokens reproduced from the compiled modules. The runtime reproduces
+the same tokens on an arm32 Android device: 3.05 s for the 4 s reference clip with the encoder on a Mali GPU and the
+decoder on the CPU (4.4 s all on the CPU). Here, `WhisperTokenizerTest` decodes those tokens to the reference
+transcript with the pinned `tokenizer.json`.

@@ -3,9 +3,8 @@ import sk.ainet.cartridge.blueprint.gradle.IreeCompileTask
 // Blueprint: speech-to-text with Whisper tiny (en + de) over a fixed 4 s window, IREE on Vulkan or CPU.
 //
 // (1) The cartridge's Kotlin API — a Kotlin Multiplatform library with NO model in it: the batch contract, the pack
-// locator and language selection in commonMain. There is no released Android runtime binding for the whisper
-// contract yet, so this blueprint ships no `build-runtime` step; a host runs the three modules with any IREE runtime,
-// in the order `whisper-contract.json` names.
+// locator, language selection, the detokenizer and the transcript tidy-up in commonMain; the Android binding over
+// SKaiNET-transformers' IreeWhisperSession (androidMain) with SKaiNET-audio's Whisper log-mel frontend.
 // (2) The recipe: the tasks below are the `steps` of blueprint.json, per flavor (language), registered as named
 // products for `materializeCartridge`.
 //
@@ -22,6 +21,13 @@ plugins {
  * `-PwhisperExportVersion=<x>-SNAPSHOT -PuseMavenLocal=true` against a snapshot published from its branch.
  */
 val whisperExportVersion = providers.gradleProperty("whisperExportVersion").getOrElse(libs.versions.transformers.get())
+
+/**
+ * The SKaiNET-transformers runtime that ships `IreeWhisperSession` + `libskainet_whisper_session.so`. To try an
+ * unreleased runtime, build with `-PwhisperRuntimeVersion=<x>-SNAPSHOT -PuseMavenLocal=true` against a snapshot
+ * published from its branch (`:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=<x>-SNAPSHOT`).
+ */
+val whisperRuntimeVersion = providers.gradleProperty("whisperRuntimeVersion").getOrElse(whisperExportVersion)
 
 kotlin {
     explicitApi()
@@ -44,6 +50,12 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+        }
+        androidMain.dependencies {
+            // IreeWhisperSession + libskainet_whisper_session.so (both ABIs)
+            api("sk.ainet.transformers:skainet-transformers-runtime-iree-android:$whisperRuntimeVersion")
+            // Whisper's log-mel frontend (MelConfig.whisper, Slaney filterbank)
+            implementation(libs.audio.mel)
         }
     }
 }
@@ -103,16 +115,20 @@ for ((flavor, spec) in flavors) {
         }
     }
 
-    // compile — each graph → .vmfb for the profile's target; prefill and step keep their parameter references.
+    // compile — each graph → .vmfb; prefill and step keep their parameter references. The encoder follows the target's
+    // backend; prefill and step are compiled for the CPU of the target's ABI on every target (`decoder_iree_target`):
+    // the step graph does not compile for Vulkan with IREE 3.11, and its M = 1 matrix-vector products cost about the
+    // same on both.
     for (graph in graphs) {
         val g = graph.replaceFirstChar(Char::uppercase)
+        val onDecoder = graph != "encoder"
         val compile = tasks.register<IreeCompileTask>("compile$f$g") {
             group = "cartridge blueprint steps"
             image.set(selected.map { it.image("iree-tools") })
             dependsOn(export)
             input.set(exportDir.map { it.file("whisper_$graph.mlir") })
-            backend.set(selected.map { it.param("backend") })
-            target.set(selected.map { it.param("iree_target") })
+            backend.set(selected.map { if (onDecoder) "cpu" else it.param("backend") })
+            target.set(selected.map { it.param(if (onDecoder) "decoder_iree_target" else "iree_target") })
             output.set(work.zip(selected) { w, t -> w.file("compile/${t.id}/$flavor/$graph.vmfb") })
         }
         blueprint.product("$flavor-$graph-vmfb", compile.flatMap { it.output }, flavor = flavor)
@@ -121,3 +137,20 @@ for ((flavor, spec) in flavors) {
     blueprint.product("$flavor-contract", export.map { exportDir.get().file("manifest.json") }, flavor = flavor)
     blueprint.product("$flavor-tokenizer", blueprint.sourceFile(source, "tokenizer.json"), flavor = flavor)
 }
+
+// build-runtime — the JNI library for the target ABI, from the published Android runtime (AAR).
+val runtimeAar: Configuration by configurations.creating { isCanBeConsumed = false; isTransitive = false }
+dependencies { runtimeAar("sk.ainet.transformers:skainet-transformers-runtime-iree-android:$whisperRuntimeVersion@aar") }
+
+val extractRuntime = tasks.register<Copy>("extractRuntime") {
+    group = "cartridge blueprint steps"
+    description = "build-runtime: libskainet_whisper_session.so for the target ABI, from the released SKaiNET-transformers runtime"
+    val abi = selected.map { it.abi }
+    from(runtimeAar.elements.map { files -> files.map { zipTree(it) } }) {
+        include { it.path == "jni/${abi.get()}/libskainet_whisper_session.so" }
+        eachFile { path = name }
+        includeEmptyDirs = false
+    }
+    into(work.zip(selected) { w, t -> w.dir("runtime/${t.abi}") })
+}
+blueprint.product("runtime-so", extractRuntime.map { work.get().file("runtime/${selected.get().abi}/libskainet_whisper_session.so") })
