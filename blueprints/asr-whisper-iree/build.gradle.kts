@@ -17,10 +17,11 @@ plugins {
 }
 
 /**
- * The SKaiNET-transformers release that ships `WhisperExportCli`. To try an unreleased exporter, build with
- * `-PwhisperExportVersion=<x>-SNAPSHOT -PuseMavenLocal=true` against a snapshot published from its branch.
+ * The SKaiNET-transformers release that ships `WhisperExportCli` (PR #510) and `IreeWhisperSession` (PR #512): 0.63.0,
+ * against engine 0.62.0 — ahead of the catalog's `transformers`, which the other blueprints share. To try an unreleased
+ * exporter, build with `-PwhisperExportVersion=<x>-SNAPSHOT -PuseMavenLocal=true` against a snapshot from its branch.
  */
-val whisperExportVersion = providers.gradleProperty("whisperExportVersion").getOrElse(libs.versions.transformers.get())
+val whisperExportVersion = providers.gradleProperty("whisperExportVersion").getOrElse("0.63.0")
 
 /**
  * The SKaiNET-transformers runtime that ships `IreeWhisperSession` + `libskainet_whisper_session.so`. To try an

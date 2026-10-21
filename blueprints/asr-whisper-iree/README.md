@@ -16,7 +16,7 @@ materialize it into a cartridge with *your* profile.
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`: the batch contract, the pack locator (with the graph contract), language selection, the detokenizer and the transcript tidy-up; on Android the runtime binding `WhisperAsrCartridge` (see *Platforms*) |
 | Flavors | `en`, `de` — one language per flavor; a profile selects one or both |
 | Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`) |
-| Toolchain | SKaiNET 0.61.0, SKaiNET-transformers with `WhisperExportCli` (exporter) and `IreeWhisperSession` (Android runtime), SKaiNET-audio 0.2.1 (log-mel), IREE tools 3.11.0 |
+| Toolchain | SKaiNET 0.62.0, SKaiNET-transformers 0.63.0 (`WhisperExportCli` exporter, `IreeWhisperSession` Android runtime), SKaiNET-audio 0.2.2 (log-mel), IREE tools 3.11.0 |
 
 ## What you will build
 

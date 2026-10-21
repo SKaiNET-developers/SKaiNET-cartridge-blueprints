@@ -109,11 +109,11 @@
   ],
   "toolchain": {
     "skainet": {
-      "version": "0.61.0",
+      "version": "0.62.0",
       "coordinates": "sk.ainet:skainet-bom"
     },
     "skainet-transformers": {
-      "version": "0.62.2",
+      "version": "0.63.0",
       "coordinates": "sk.ainet.transformers:skainet-transformers-inference-whisper",
       "description": "WhisperExportCli: Hugging Face snapshot -> three StableHLO graphs + one shared params.irpa + manifest.json (Kotlin)"
     },
@@ -123,7 +123,7 @@
       "description": "IREE tools (StableHLO -> IREE): iree-compile with parameter export"
     },
     "iree-android-runtime": {
-      "version": "0.62.2",
+      "version": "0.63.0",
       "coordinates": "sk.ainet.transformers:skainet-transformers-runtime-iree-android",
       "description": "libskainet_whisper_session.so + IreeWhisperSession, built and published by SKaiNET-transformers from llm-runtime/iree-android/native"
     },

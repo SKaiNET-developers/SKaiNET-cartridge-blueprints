@@ -15,7 +15,7 @@ androidMinSdk = "29"
 kotlinxCoroutines = "1.11.0"
 kotlinxIo = "0.9.1"
 # SKaiNET-audio: Whisper's log-mel frontend for the Whisper binding
-skainetAudio = "0.2.1"
+skainetAudio = "0.2.2"
 
 [libraries]
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
