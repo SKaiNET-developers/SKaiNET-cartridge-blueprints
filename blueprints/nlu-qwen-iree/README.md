@@ -17,7 +17,7 @@ catalog**. You materialize it into a cartridge with *your* profile.
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, catalog, prompt and the resolve loop are common code; a **runtime binding exists for Android** |
 | Targets | `vulkan-armv7` (IREE `vulkan-spirv`, `valhall4`), `cpu-armv7` (IREE `llvm-cpu`, arm32) — Android `armeabi-v7a` |
 | Tool catalog | an **input** you supply ([schema](schema/tool-catalog.schema.json)); [`samples/toy-catalog.json`](samples/toy-catalog.json) is a three-function toy |
-| Toolchain | SKaiNET 0.57.0, SKaiNET-transformers 0.57.0, IREE tools 3.11.0 |
+| Toolchain | SKaiNET 0.61.0, SKaiNET-transformers 0.62.2, IREE tools 3.11.0 |
 
 ## Status
 
@@ -76,7 +76,7 @@ sha256 of the file. Apache-2.0 needs no acceptance record.
 ./gradlew :blueprints:nlu-qwen-iree:exportQwen3600m -Pprofile=profiles/mine.json
 ```
 
-One run of the released `QwenExportCli` (`sk.ainet.transformers:skainet-transformers-inference-qwen:0.57.0`) per
+One run of the released `QwenExportCli` (`sk.ainet.transformers:skainet-transformers-inference-qwen:0.62.2`) per
 flavor, with `QWEN_GRAPH=all`. It derives the architecture from the GGUF (layer count, query and key-value heads,
 head dimension, QK-norm, RoPE base, tied embeddings), traces the three graphs of the contract and writes
 `qwen-<graph>.mlir`, `qwen-<graph>.safetensors` and the flavor's `manifest.json`.
@@ -92,7 +92,7 @@ What the export does to the model, so the numbers can be trusted:
 - **Weights**: the Q8_0 blocks are dequantized and stored as **bf16**; compute is **f32**. No quantization of its own.
 - **Grouped-query attention** stays native: key/value caches are `[1, 8, past, 128]` for Qwen3-0.6B, never expanded
   to the 16 query heads.
-- **Chunk mask** is head-shared, `[1, 1, 32, past + 32]`; SKaiNET 0.57.0 broadcasts it onto the grouped scores in
+- **Chunk mask** is head-shared, `[1, 1, 32, past + 32]`; SKaiNET (since 0.57.0) broadcasts it onto the grouped scores in
   the form IREE's Vulkan backend lowers.
 - **argMax** runs over the logits padded from 151 936 to 153 600 entries with a large finite negative, because the
   Vulkan backend lowers the fused reduction only on multiples of 2048. The padded columns can never win; the real
@@ -127,8 +127,8 @@ export CARTRIDGE_SIGNING_KEY="$(cat ~/keys/my-dev-key.pem)"      # openssl genpk
 ```
 
 - **Runtime** — `libskainet_iree_kv.so` for the target ABI comes from the published
-  `skainet-transformers-runtime-iree-android:0.57.0`, the first release whose session runs grouped-query models and
-  builds the head-shared chunk mask.
+  `skainet-transformers-runtime-iree-android:0.62.2`; 0.57.0 was the first release whose session runs grouped-query
+  models and builds the head-shared chunk mask.
 - **Measure** — the first run stops with *"No `performance` for the descriptor"*. Push the pack to your device, run
   your utterances through `QwenNluCartridge`, and put what you measured into the profile. This blueprint has no
   reference measurements to compare against yet.

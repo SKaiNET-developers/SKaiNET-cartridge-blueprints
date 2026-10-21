@@ -15,7 +15,10 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import org.gradle.work.DisableCachingByDefault
+import sk.ainet.cartridge.blueprint.steps.Conv1dIm2colRewrite
 import sk.ainet.cartridge.blueprint.steps.HostGatherRewrite
+import sk.ainet.cartridge.blueprint.steps.Int8ParametersRewrite
+import sk.ainet.cartridge.blueprint.steps.Int8WeightsRewrite
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
@@ -37,6 +40,58 @@ abstract class HostGatherTask : DefaultTask() {
         val result = HostGatherRewrite.rewrite(input.get().asFile.readText())
         output.get().asFile.apply { parentFile.mkdirs() }.writeText(result.mlir)
         logger.lifecycle("host-gather: @${result.function} takes %emb : ${result.embeddingType} (was a gather from ${result.table})")
+    }
+}
+
+/** `convert`: rewrites the 1-D convolutions of an exported StableHLO module as im2col + matmul. */
+@CacheableTask
+abstract class Conv1dIm2colTask : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
+    @get:OutputFile abstract val output: RegularFileProperty
+
+    @TaskAction
+    fun run() = materializing {
+        val result = Conv1dIm2colRewrite.rewrite(input.get().asFile.readText())
+        output.get().asFile.apply { parentFile.mkdirs() }.writeText(result.mlir)
+        logger.lifecycle("conv1d-im2col: ${result.rewritten} convolution(s) as im2col + matmul in ${output.get().asFile.name}")
+    }
+}
+
+/**
+ * `convert`: weight-only int8 for the large matrices of an exported StableHLO module (per-row scales, dequantized in
+ * the graph). Compile the output with [Int8WeightsRewrite.COMPILE_FLAGS].
+ */
+@CacheableTask
+abstract class Int8WeightsTask : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
+    @get:OutputFile abstract val output: RegularFileProperty
+
+    @TaskAction
+    fun run() = materializing {
+        val out = output.get().asFile.apply { parentFile.mkdirs() }
+        val result = input.get().asFile.bufferedReader().use { r -> out.bufferedWriter().use { w -> Int8WeightsRewrite.rewrite(r, w) } }
+        logger.lifecycle("int8-weights: ${result.rewritten} matrices as int8 in ${out.name}, ${result.bytesSaved / 1_000_000} MB fewer weight bytes")
+    }
+}
+
+/**
+ * `convert`: weight-only int8 for the large bf16 parameter matrices of an exported module and its safetensors file
+ * (per-row scales, dequantized in the graph). Compile the output with [Int8ParametersRewrite.COMPILE_FLAGS].
+ */
+@CacheableTask
+abstract class Int8ParametersTask : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mlir: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val safetensors: RegularFileProperty
+    @get:OutputFile abstract val mlirOutput: RegularFileProperty
+    @get:OutputFile abstract val safetensorsOutput: RegularFileProperty
+
+    @TaskAction
+    fun run() = materializing {
+        val result = Int8ParametersRewrite.rewrite(mlir.get().asFile.readText())
+        mlirOutput.get().asFile.apply { parentFile.mkdirs() }.writeText(result.mlir)
+        val input = safetensors.get().asFile
+        val bytes = Int8ParametersRewrite.rewriteSafetensors(input, safetensorsOutput.get().asFile, result.matrices)
+        logger.lifecycle("int8-parameters: ${result.matrices.size} matrices as int8, parameters ${input.length() / 1_000_000} -> ${bytes / 1_000_000} MB")
     }
 }
 
@@ -121,7 +176,11 @@ abstract class IreeCompileTask @Inject constructor(exec: ExecOperations) : IreeT
                 "host" -> "--iree-hal-target-backends=llvm-cpu"
                 "arm32" -> cpuFlags("armv7a-linux-androideabi29", "cortex-a55", "+neon", "--iree-llvmcpu-stack-allocation-limit=1048576")
                 "arm64" -> cpuFlags("aarch64-linux-android29", "cortex-a76", "+v8.2a,+dotprod", "")
-                else -> throw GradleException("IreeCompileTask.target must be host|arm32|arm64 for backend=cpu, got '${target.get()}'")
+                // Linux aarch64 boards (SL26xx, Cortex-A55): embedded ELF, no system linker; used with the
+                // Torq-fork compiler image (params.toolchain = iree-tools-torq), whose runtime is on the board.
+                "linux-arm64" -> "--iree-hal-target-backends=llvm-cpu --iree-llvmcpu-target-triple=aarch64-unknown-linux-gnu " +
+                    "--iree-llvmcpu-target-cpu=cortex-a55 --iree-llvmcpu-target-cpu-features=+v8.2a,+neon,+dotprod"
+                else -> throw GradleException("IreeCompileTask.target must be host|arm32|arm64|linux-arm64 for backend=cpu, got '${target.get()}'")
             }
         }
         runInContainer(input.get().asFile, output.get().asFile, entrypoint = null) { i, o ->

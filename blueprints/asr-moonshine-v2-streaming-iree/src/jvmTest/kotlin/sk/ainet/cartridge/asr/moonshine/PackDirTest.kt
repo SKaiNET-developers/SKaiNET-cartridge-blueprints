@@ -5,17 +5,18 @@ import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PackDirTest {
-    private fun pack(languages: List<String>, accelerator: Boolean): File {
+    private fun pack(languages: List<String>, accelerator: Boolean, archive: Boolean = true): File {
         val root = Files.createTempDirectory("moonshine-pack").toFile()
         val target = if (accelerator) """{"hardware":"IREE-armeabi-v7a","abi":"armeabi-v7a","accelerator":"Vulkan GPU (valhall4)"}""" else """{"hardware":"IREE-armeabi-v7a","abi":"armeabi-v7a"}"""
         File(root, "descriptor.json").writeText("""{"id":"asr-moonshine-v2-streaming-iree","target":$target,"attributes":{"languages":[${languages.joinToString(",") { "\"$it\"" }}]}}""")
         for (l in languages) {
             for (g in listOf("frontend", "encoder", "adapter", "prefill", "step")) File(root, "artifacts/model/$l/$g.vmfb").apply { parentFile.mkdirs() }.writeBytes(byteArrayOf(1))
-            File(root, "artifacts/weights/$l/params.irpa").apply { parentFile.mkdirs() }.writeBytes(byteArrayOf(2))
-            File(root, "artifacts/weights/$l/dec_embed.bin").writeBytes(byteArrayOf(3))
+            if (archive) File(root, "artifacts/weights/$l/params.irpa").apply { parentFile.mkdirs() }.writeBytes(byteArrayOf(2))
+            File(root, "artifacts/weights/$l/dec_embed.bin").apply { parentFile.mkdirs() }.writeBytes(byteArrayOf(3))
             File(root, "artifacts/tokenizer/$l/vocab.bin").apply { parentFile.mkdirs() }.writeBytes(byteArrayOf(4))
         }
         return root
@@ -32,6 +33,14 @@ class PackDirTest {
         assertTrue(de.all.all { it.toString().contains("/de/") })
         assertTrue(de.stepVmfb.toString().endsWith("artifacts/model/de/step.vmfb"))
         assertTrue(de.paramsIrpa.toString().endsWith("artifacts/weights/de/params.irpa"))
+    }
+
+    @Test
+    fun theArchiveIsOptional() {
+        // int8 decoder graphs carry their weights inline; such a pack ships no parameter archive
+        val en = PackDir(pack(listOf("en"), accelerator = false, archive = false).path).model("en")
+        assertNull(en.paramsIrpa)
+        assertEquals(7, en.all.size)
     }
 
     @Test

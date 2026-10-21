@@ -14,9 +14,9 @@ catalog**. You materialize it into a cartridge with *your* profile.
 | Weights license | **Gemma Terms of Use** — <https://ai.google.dev/gemma/terms>. Not an OSI license. Verified on the model card 2026-09-21 (`license: gemma`, repository not gated; the base model is gated). The blueprint marks the source `acceptance-required`: nothing is downloaded until your profile records that you accepted the terms. |
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, catalog, prompt and the resolve loop are common code; a **runtime binding exists for Android** (see *Platforms*) |
-| Targets | `vulkan-armv7` (IREE `vulkan-spirv`, `valhall4`), `cpu-armv7` (IREE `llvm-cpu`, arm32) — Android `armeabi-v7a`; `vulkan-arm64` (`vulkan-spirv`, `valhall4`), `cpu-arm64` (`llvm-cpu`, aarch64) — Android `arm64-v8a` |
+| Targets | `vulkan-armv7` (IREE `vulkan-spirv`, `valhall4`), `cpu-armv7` (IREE `llvm-cpu`, arm32) — Android `armeabi-v7a`; `vulkan-arm64` (`vulkan-spirv`, `valhall4`), `cpu-arm64` (`llvm-cpu`, aarch64) — Android `arm64-v8a`; `cpu-sl26xx` (`llvm-cpu`, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules) — Linux aarch64 |
 | Tool catalog | an **input** you supply ([schema](schema/tool-catalog.schema.json)); [`samples/toy-catalog.json`](samples/toy-catalog.json) is a three-function toy |
-| Toolchain | SKaiNET 0.56.0, SKaiNET-transformers 0.56.0, IREE tools 3.11.0 |
+| Toolchain | SKaiNET 0.61.0, SKaiNET-transformers 0.62.2, IREE tools 3.11.0 |
 
 ## What you will build
 
@@ -83,7 +83,7 @@ redirects the download — the digest stays the blueprint's.
 ```
 
 Each task runs the released Kotlin exporter, `FunctionGemmaExportCli` from
-`sk.ainet.transformers:skainet-transformers-inference-functiongemma:0.56.0`, resolved from Maven Central. It loads
+`sk.ainet.transformers:skainet-transformers-inference-functiongemma:0.62.2`, resolved from Maven Central. It loads
 the GGUF with SKaiNET's GGUF reader, traces the model in the SKaiNET DSL and writes, per graph,
 `gemma-<graph>.mlir` (StableHLO) and `gemma-<graph>.safetensors` (the weights, *external* to the module).
 
@@ -102,7 +102,9 @@ in the exporter and is *not* used here; an int8 variant would be a different blu
 
 Open a `.mlir`: look for `stablehlo.` operations, and at the module header for the `skainet.schedule` attribute —
 `parallel_dims = ["batch", "heads"]` per attention, structure only, never a core count. Apart from that header the
-0.56.0 export of this model is line-for-line the module the original cartridge was built from.
+0.56.0 export of this model is line-for-line the module the original cartridge was built from; the 0.62.0 export
+differs from it only in SSA value names and, in `prefill_with_past`, the order of two independent ops (same op
+multiset), with byte-identical parameter archives.
 
 ## Step 4 — Move the embedding lookup to the host (`convert`: host-gather)
 
@@ -136,6 +138,25 @@ Numerics are unchanged: the graph receives exactly the rows the gather would hav
 ```
 iree-convert-parameters --parameters=model=gemma-with-past.safetensors --output=gemma-with-past.irpa
 ```
+
+Targets that list graphs in `params.int8_weights` (`cpu-sl26xx`: all three) first run a `convert` rewrite on each
+listed graph's module and safetensors together (`int8WithPast` …): every rank-2 bf16 parameter with at least 16384
+elements that the graph converts to f32 becomes an int8 parameter `<key>_q` with one f32 scale per row `<key>_s`
+(`scale = max|row| / 127`), dequantized in the graph; norm gains stay bf16. The archives shrink from 536 to 269 MB.
+The embedding table goes int8 as well; the runtime's host gather reads it with its row scales. The compile then
+runs with `--iree-opt-const-expr-hoisting=false --iree-opt-const-eval=false`, so the dequantization stays in the
+graph instead of becoming f32 copies of the weights. On the Cortex-A55 of `cpu-sl26xx` a decode step takes 610 ms
+instead of 830 ms; the golden set scores 11/12 as with bf16, with one argument different ("halfway" → `open`).
+
+A target can also export the chunk graph with fewer tokens per call (`params.chunk`; `cpu-sl26xx`: 4, others 32).
+On the Cortex-A55 a 4-token call costs ~0.78 s against ~0.61 s for one decode step and ~3.8 s for a 32-token call,
+so the utterance goes in faster, and the engine can feed the tokens the catalog leaves no choice about (`call:`,
+the rest of a function name, `{`, `:`, `<escape>`, the rest of an enum value, the closing `}`) in one call instead
+of one step each (`CallGrammar`). Only the model's own choices are decoded token by token; it stops at the `}`
+that closes the call. An enum value the model misspells is snapped to the catalog's value (`close` → `closed`).
+On `cpu-sl26xx`: golden set 11/12 as before, all arguments right, p50 17.8 → 8.9 s per command. The descriptor's
+`attributes.runtime_hint.chunk` must say the chunk the graphs have; a target cannot override descriptor
+attributes yet, so development packs set it from `params.chunk`.
 
 ## Step 6 — Compile (`compile`: IREE tools, StableHLO → IREE)
 
@@ -171,7 +192,7 @@ export CARTRIDGE_SIGNING_KEY="$(cat ~/keys/my-dev-key.pem)"      # openssl genpk
 ```
 
 - **Runtime** — `libskainet_iree_kv.so` for the target ABI is taken from the published
-  `skainet-transformers-runtime-iree-android:0.56.0`; its source is `llm-runtime/iree-android/native` in
+  `skainet-transformers-runtime-iree-android:0.62.2`; its source is `llm-runtime/iree-android/native` in
   SKaiNET-transformers.
 - **Measure** — the first run stops with *"No `performance` for the descriptor"*. Push the pack to your device, run
   your utterances through `FunctionGemmaNluCartridge`, and put what you measured into the profile. The blueprint's

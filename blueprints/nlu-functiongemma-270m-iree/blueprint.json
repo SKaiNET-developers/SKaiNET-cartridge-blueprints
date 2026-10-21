@@ -96,11 +96,11 @@
   ],
   "toolchain": {
     "skainet": {
-      "version": "0.56.0",
+      "version": "0.61.0",
       "coordinates": "sk.ainet:skainet-bom"
     },
     "skainet-transformers": {
-      "version": "0.56.0",
+      "version": "0.62.2",
       "coordinates": "sk.ainet.transformers:skainet-transformers-inference-functiongemma",
       "description": "FunctionGemmaExportCli: GGUF -> StableHLO modules + external parameters (Kotlin)"
     },
@@ -109,8 +109,13 @@
       "image": "skainet/iree-compiler:3.11.0",
       "description": "IREE tools (StableHLO -> IREE): iree-compile, iree-convert-parameters"
     },
+    "iree-tools-torq": {
+      "version": "2.0.0",
+      "image": "skainet/iree-compiler-torq:2.0.0",
+      "description": "Synaptics Torq-fork iree-compile (SKaiNET-embedded-vendors synaptics-torq/docker) for SL26xx boards: their runtime rejects upstream-IREE modules, so targets with params.toolchain = iree-tools-torq compile here; parameters still come from iree-tools (shared .irpa format)"
+    },
     "iree-android-runtime": {
-      "version": "0.56.0",
+      "version": "0.62.2",
       "coordinates": "sk.ainet.transformers:skainet-transformers-runtime-iree-android",
       "description": "libskainet_iree_kv.so, built and published by SKaiNET-transformers from llm-runtime/iree-android/native"
     },
@@ -205,6 +210,34 @@
         "suffix": "arm64",
         "device": "local-task"
       }
+    },
+    {
+      "id": "cpu-sl26xx",
+      "target": {
+        "hardware": "IREE-linux-aarch64 (Synaptics SL26xx, Cortex-A55)",
+        "abi": "linux-aarch64"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 1900,
+        "driver": {
+          "name": "Torq-fork IREE runtime",
+          "min_version": ">=2.0.0 <2.1",
+          "note": "modules come from the Torq 2.0.x compiler; the app links the matching runtime (local-task driver)"
+        },
+        "os": {
+          "name": "linux"
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "linux-arm64",
+        "suffix": "a55",
+        "device": "local-task",
+        "toolchain": "iree-tools-torq",
+        "int8_weights": "with-past,prefill-with-past,prefill-at",
+        "chunk": "4"
+      }
     }
   ],
   "inputs": [
@@ -252,7 +285,7 @@
           },
           "prefill-with-past": {
             "GEMMA_GRAPH": "prefill_with_past",
-            "GEMMA_CHUNK": "32"
+            "GEMMA_CHUNK": "32 unless the target sets params.chunk (cpu-sl26xx: 4; the descriptor's runtime_hint.chunk must match, which a target cannot override yet: dev packs set it from params.chunk)"
           },
           "prefill-at": {
             "GEMMA_GRAPH": "prefill_at",
@@ -278,6 +311,28 @@
       "description": "Replace the token-embedding gather with an %emb argument; the runtime reads embedding rows from the archive. Numerics unchanged."
     },
     {
+      "id": "int8-parameters",
+      "kind": "convert",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "with-past-hostgather-mlir",
+        "with-past-safetensors",
+        "prefill-with-past-hostgather-mlir",
+        "prefill-with-past-safetensors",
+        "prefill-at-hostgather-mlir",
+        "prefill-at-safetensors"
+      ],
+      "produces": [
+        "with-past-int8-mlir",
+        "with-past-int8-safetensors",
+        "prefill-with-past-int8-mlir",
+        "prefill-with-past-int8-safetensors",
+        "prefill-at-int8-mlir",
+        "prefill-at-int8-safetensors"
+      ],
+      "description": "Only for the graphs a target lists in params.int8_weights: every rank-2 bf16 parameter with at least 16384 elements that the graph converts to f32 becomes an int8 parameter <key>_q with one f32 scale per row <key>_s (scale = max|row| / 127), dequantized in the graph; norm gains stay bf16. Module and safetensors are rewritten together; the parameters step then converts the int8 safetensors, and the compile step reads the int8 module and runs with const-expr hoisting and const-eval off, so no f32 copies of the weights are made. The embedding table goes int8 too: the runtime's host gather reads an int8 table with its row scales. On a Cortex-A55 (cpu-sl26xx): archives 536 -> 269 MB, decode 830 -> 610 ms/token, golden set 11/12 as with bf16 (one argument differs)."
+    },
+    {
       "id": "parameters",
       "kind": "convert",
       "tool": "iree-tools",
@@ -291,7 +346,7 @@
         "prefill-with-past-irpa",
         "prefill-at-irpa"
       ],
-      "description": "iree-convert-parameters: safetensors -> .irpa, scope `model`. Format change only."
+      "description": "iree-convert-parameters: safetensors -> .irpa, scope `model`. Format change only. Reads the int8 safetensors for graphs listed in params.int8_weights."
     },
     {
       "id": "compile",
@@ -308,7 +363,7 @@
         "prefill-at-vmfb"
       ],
       "per_target": true,
-      "description": "iree-compile for the target's backend: vulkan-spirv (--iree-vulkan-target) or llvm-cpu."
+      "description": "iree-compile for the target's backend: vulkan-spirv (--iree-vulkan-target) or llvm-cpu. Reads the int8 module for graphs listed in params.int8_weights."
     },
     {
       "id": "runtime",
