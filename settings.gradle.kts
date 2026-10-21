@@ -32,4 +32,10 @@ include(":blueprints:embedding-leaf-skainet")
 include(":profiles:embedding-v1")
 include(":blueprints:nlu-qwen-iree")
 include(":profiles:yolo-v1")
-include(":blueprints:detection-yolov8-iree")
+// detection-yolov8-iree builds against SKaiNET pieces that are not released yet (skainet-data-media,
+// and IreeModuleRunner from SKaiNET-transformers), so it is part of the build only under the same
+// opt-in that makes those resolvable (see its build script for the snapshot coordinates). Once the
+// upstream releases land, bump the catalog and make this include unconditional.
+if (providers.gradleProperty("useMavenLocal").orNull == "true") {
+    include(":blueprints:detection-yolov8-iree")
+}

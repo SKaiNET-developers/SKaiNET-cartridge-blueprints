@@ -19,16 +19,19 @@ plugins {
 }
 
 /**
- * SKaiNET core with `Letterbox` / `nonMaxSuppression` (skainet-data-media). UNTIL 0.60.1 IS ON MAVEN CENTRAL: build
- * with `-PskainetVersion=0.60.1-SNAPSHOT -PuseMavenLocal=true` against a snapshot published from SKaiNET branch
- * `refactor/yolo-out-of-core` (`publishToMavenLocal -PVERSION_NAME=0.60.1-SNAPSHOT`).
+ * SKaiNET core with `Letterbox` / `nonMaxSuppression` (skainet-data-media). UNTIL SKAINET RELEASES
+ * `skainet-data-media` (SKaiNET PR #1437): build with `-PskainetVersion=0.60.1-SNAPSHOT -PuseMavenLocal=true`
+ * against a snapshot published from SKaiNET branch `refactor/yolo-out-of-core`
+ * (`publishToMavenLocal -PVERSION_NAME=0.60.1-SNAPSHOT`). The module is only included in the build under
+ * that opt-in (see settings.gradle.kts); once released, pin the real version here and drop the gate.
  */
 val skainetVersion = providers.gradleProperty("skainetVersion").getOrElse("0.60.1")
 
 /**
  * The SKaiNET-transformers runtime with `IreeModuleRunner` + `libskainet_iree_module.so` (branch
- * `feature/iree-module-runner`, next release 0.61.1). UNTIL IT IS ON MAVEN CENTRAL: `-PmoduleRuntimeVersion=0.61.1-SNAPSHOT`
- * with `-PuseMavenLocal=true`, against `:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=0.61.1-SNAPSHOT`.
+ * `feature/iree-module-runner`, SKaiNET-transformers PR #513). UNTIL A RELEASE CARRIES IT:
+ * `-PmoduleRuntimeVersion=0.61.1-SNAPSHOT` with `-PuseMavenLocal=true`, against
+ * `:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=0.61.1-SNAPSHOT`.
  */
 val moduleRuntimeVersion = providers.gradleProperty("moduleRuntimeVersion").getOrElse("0.61.1")
 

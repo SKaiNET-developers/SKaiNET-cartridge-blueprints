@@ -13,7 +13,8 @@ library**. You materialize it into a cartridge with *your* profile.
 > pass the golden run on a Pixel 8a through the public `yolo/v1` API (both targets detect 4 person + 1 bus on the
 > reference image with identical scores; p50 269 ms on Vulkan, 2205 ms on the CPU). Until SKaiNET ships
 > `skainet-data-media` and SKaiNET-transformers ships `IreeModuleRunner`, build against local snapshots:
-> `-PskainetVersion=… -PmoduleRuntimeVersion=… -PuseMavenLocal=true`.
+> `-PskainetVersion=… -PmoduleRuntimeVersion=… -PuseMavenLocal=true` — the same opt-in that includes this
+> module in the build at all (`settings.gradle.kts`), so a plain `./gradlew build` of the repo stays green.
 
 | | |
 |---|---|
