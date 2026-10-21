@@ -1,0 +1,465 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "asr-whisper-iree",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Speech-to-text: Whisper tiny (English, German) on IREE, Vulkan or CPU, for short utterances. Three self-compiled SKaiNET-DSL graphs — encoder over a fixed 4 s window, masked prompt prefill, one KV-cache step per token — with one shared parameter archive; log-mel features and detokenization on the host.",
+  "descriptor_template": {
+    "family": "whisper",
+    "execution_mode": "native",
+    "model": {
+      "name": "whisper-tiny",
+      "variant": "iree-fp32-window4s",
+      "params": 39000000,
+      "checkpoint": "openai/whisper-tiny.en",
+      "upstream": {
+        "source": "https://huggingface.co/openai",
+        "license": "Apache-2.0"
+      }
+    },
+    "modality": "audio",
+    "task": "asr",
+    "io": {
+      "mode": "batch",
+      "input": {
+        "dtype": "float32-pcm",
+        "shape": [
+          null
+        ],
+        "sample_rate_hz": 16000
+      },
+      "output": {
+        "dtype": "utf8-text",
+        "shape": [
+          null
+        ]
+      }
+    },
+    "attributes": {
+      "streaming": false,
+      "languages": [],
+      "state_model": "stateless",
+      "max_utterance_s": 4.0,
+      "audio_ctx": 200,
+      "mel_bins": 80,
+      "max_positions": 48,
+      "weights": "fp32 (encoder inline, decoder from the shared parameter archive)",
+      "frontend": "host: 80-bin log-mel of 16 kHz audio (Whisper's standard frontend: 25 ms window, 10 ms hop), padded or cut to 4 s",
+      "runtime_hint": {
+        "runtime": "iree",
+        "version": "3.11.0",
+        "contract": "whisper-v2 (encoder + masked prefill + KV step, the self/cross KV cache as explicit graph I/O, host-computed additive masks; one parameter archive shared by prefill and step; manifest.json names functions, argument and result order)"
+      }
+    }
+  },
+  "sources": [
+    {
+      "name": "weights-en",
+      "role": "weights",
+      "uri": "hf://openai/whisper-tiny.en",
+      "revision": "87c7102498dcde7456f24cfd30239ca606ed9063",
+      "files": [
+        {
+          "path": "config.json",
+          "digest": "sha256:b5366317df280f79e6cc366f259f379674f81a8721d458acf2e00680ccb10b1d",
+          "size": 1937
+        },
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:db59695928ded6043adaef491a53ef4e12da9611184d77c53baa691a60b958ad",
+          "size": 151060136
+        },
+        {
+          "path": "tokenizer.json",
+          "digest": "sha256:5eb60cec1e77aeeb6869a2bb5a8e01a84c3fe5d072d75369343021fe6f5310d0",
+          "size": 2405679
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_url": "https://huggingface.co/openai/whisper-tiny.en/blob/87c7102498dcde7456f24cfd30239ca606ed9063/README.md",
+      "redistribution": "allowed"
+    },
+    {
+      "name": "weights-de",
+      "role": "weights",
+      "uri": "hf://primeline/whisper-tiny-german-1224",
+      "revision": "620446eace9418630bb0a0931e59b16b3d223b90",
+      "files": [
+        {
+          "path": "config.json",
+          "digest": "sha256:17e68bacb43402aa2491efab9e5695c5c72601a71efe5b4cdf7b827fe6937d5a",
+          "size": 1280
+        },
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:858ace7b5ee93e398bb4e0b5fffeda467a77e83db91071026317485057f86d7e",
+          "size": 75540336
+        },
+        {
+          "path": "tokenizer.json",
+          "digest": "sha256:239791445041e1db7e3cfabd8f04c4177ca9eeb0f2e091fbd2c36b9b7e9300eb",
+          "size": 2203236
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_url": "https://huggingface.co/primeline/whisper-tiny-german-1224/blob/620446eace9418630bb0a0931e59b16b3d223b90/README.md",
+      "redistribution": "allowed"
+    }
+  ],
+  "toolchain": {
+    "skainet": {
+      "version": "0.61.0",
+      "coordinates": "sk.ainet:skainet-bom"
+    },
+    "skainet-transformers": {
+      "version": "0.62.2",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-inference-whisper",
+      "description": "WhisperExportCli: Hugging Face snapshot -> three StableHLO graphs + one shared params.irpa + manifest.json (Kotlin)"
+    },
+    "iree-tools": {
+      "version": "3.11.0",
+      "image": "skainet/iree-compiler:3.11.0",
+      "description": "IREE tools (StableHLO -> IREE): iree-compile with parameter export"
+    },
+    "blueprint-plugin": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.blueprint"
+    }
+  },
+  "targets": [
+    {
+      "id": "vulkan-armv7",
+      "target": {
+        "hardware": "IREE-armeabi-v7a",
+        "abi": "armeabi-v7a",
+        "accelerator": "Vulkan GPU (valhall4)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 1024,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "vulkan",
+        "iree_target": "valhall4",
+        "device": "vulkan"
+      }
+    },
+    {
+      "id": "cpu-armv7",
+      "target": {
+        "hardware": "IREE-armeabi-v7a",
+        "abi": "armeabi-v7a"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 1024,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "arm32",
+        "device": "local-task"
+      }
+    },
+    {
+      "id": "vulkan-arm64",
+      "target": {
+        "hardware": "IREE-arm64-v8a",
+        "abi": "arm64-v8a",
+        "accelerator": "Vulkan GPU (valhall4)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 1024,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "vulkan",
+        "iree_target": "valhall4",
+        "device": "vulkan"
+      }
+    },
+    {
+      "id": "cpu-arm64",
+      "target": {
+        "hardware": "IREE-arm64-v8a",
+        "abi": "arm64-v8a"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 1024,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "arm64",
+        "device": "local-task"
+      }
+    }
+  ],
+  "flavors": [
+    {
+      "id": "en",
+      "sources": [
+        "weights-en"
+      ],
+      "descriptor_overrides": {
+        "attributes": {
+          "languages": [
+            "en"
+          ]
+        },
+        "model": {
+          "name": "whisper-tiny",
+          "variant": "iree-fp32-window4s-en",
+          "params": 39000000,
+          "checkpoint": "openai/whisper-tiny.en"
+        }
+      }
+    },
+    {
+      "id": "de",
+      "sources": [
+        "weights-de"
+      ],
+      "descriptor_overrides": {
+        "attributes": {
+          "languages": [
+            "de"
+          ]
+        },
+        "model": {
+          "name": "whisper-tiny",
+          "variant": "iree-fp32-window4s-de",
+          "params": 39000000,
+          "checkpoint": "primeline/whisper-tiny-german-1224"
+        }
+      }
+    }
+  ],
+  "inputs": [],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "weights-en",
+        "weights-de"
+      ],
+      "produces": [
+        "weights-en-files",
+        "weights-de-files"
+      ],
+      "description": "SKaiNET data-source: hf:// at the pinned revision, SHA-256 verified. Only the selected flavors are fetched."
+    },
+    {
+      "id": "export",
+      "kind": "export",
+      "tool": "skainet-transformers",
+      "uses": [
+        "weights-en-files",
+        "weights-de-files"
+      ],
+      "produces": [
+        "en-encoder-mlir",
+        "en-prefill-mlir",
+        "en-step-mlir",
+        "de-encoder-mlir",
+        "de-prefill-mlir",
+        "de-step-mlir",
+        "en-params",
+        "de-params",
+        "en-contract",
+        "de-contract"
+      ],
+      "params": {
+        "WHISPER_AUDIO_CTX": "200",
+        "WHISPER_MAX_POSITIONS": "48"
+      },
+      "description": "Kotlin, no Python: WhisperExportCli traces encoder, prefill and step in one session, so prefill and step share their parameter keys; their weights go into one params.irpa (deduplicated, byte-identity asserted), the encoder keeps its weights inline. manifest.json pins function names and argument/result order."
+    },
+    {
+      "id": "compile",
+      "kind": "compile",
+      "tool": "iree-tools",
+      "uses": [
+        "en-encoder-mlir",
+        "en-prefill-mlir",
+        "en-step-mlir",
+        "de-encoder-mlir",
+        "de-prefill-mlir",
+        "de-step-mlir"
+      ],
+      "produces": [
+        "en-encoder-vmfb",
+        "en-prefill-vmfb",
+        "en-step-vmfb",
+        "de-encoder-vmfb",
+        "de-prefill-vmfb",
+        "de-step-vmfb"
+      ],
+      "per_target": true,
+      "description": "iree-compile for the target's backend: vulkan-spirv (--iree-vulkan-target) or llvm-cpu. Prefill and step keep their parameter references (scope `model`), resolved against params.irpa at load time."
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "blueprint-plugin",
+      "description": "descriptor.json + manifest.json + artifacts/<role>/<language>/… (cartridge spec pack_dir).",
+      "produces": [
+        "pack-dir"
+      ],
+      "uses": [
+        "en-encoder-vmfb",
+        "en-prefill-vmfb",
+        "en-step-vmfb",
+        "de-encoder-vmfb",
+        "de-prefill-vmfb",
+        "de-step-vmfb",
+        "en-params",
+        "en-contract",
+        "de-params",
+        "de-contract",
+        "en-tokenizer",
+        "de-tokenizer"
+      ]
+    },
+    {
+      "id": "sign",
+      "kind": "sign",
+      "tool": "blueprint-plugin",
+      "description": "Ed25519 over the canonical manifest, key from the profile.",
+      "produces": [
+        "manifest"
+      ],
+      "uses": [
+        "pack-dir"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "from": "en-encoder-vmfb",
+      "role": "model",
+      "path": "artifacts/model/en/encoder.vmfb",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-prefill-vmfb",
+      "role": "model",
+      "path": "artifacts/model/en/prefill.vmfb",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-step-vmfb",
+      "role": "model",
+      "path": "artifacts/model/en/step.vmfb",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-params",
+      "role": "weights",
+      "path": "artifacts/weights/en/params.irpa",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-contract",
+      "role": "other",
+      "path": "artifacts/other/en/whisper-contract.json",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-tokenizer",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/en/tokenizer.json",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "de-encoder-vmfb",
+      "role": "model",
+      "path": "artifacts/model/de/encoder.vmfb",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-prefill-vmfb",
+      "role": "model",
+      "path": "artifacts/model/de/prefill.vmfb",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-step-vmfb",
+      "role": "model",
+      "path": "artifacts/model/de/step.vmfb",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-params",
+      "role": "weights",
+      "path": "artifacts/weights/de/params.irpa",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-contract",
+      "role": "other",
+      "path": "artifacts/other/de/whisper-contract.json",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-tokenizer",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/de/tokenizer.json",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    }
+  ]
+}
