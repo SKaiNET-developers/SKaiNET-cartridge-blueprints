@@ -45,7 +45,7 @@ class BlueprintBoundaryTest {
         val s = sources.single()
         assertTrue(Regex("[0-9a-f]{40}").matches(s.getValue("revision").jsonPrimitive.content), "revision must be a commit id, not a branch")
         assertTrue(s.getValue("license_url").jsonPrimitive.content.contains(s.getValue("revision").jsonPrimitive.content), "license_url pinned to the revision")
-        assertEquals("AGPL-3.0-only", s.getValue("license").jsonPrimitive.content)
+        assertEquals("AGPL-3.0", s.getValue("license").jsonPrimitive.content)
         assertEquals("restricted", s.getValue("redistribution").jsonPrimitive.content, "AGPL obligations travel with every cartridge")
         val files = s.getValue("files").jsonArray.map { it.jsonObject }
         assertEquals(listOf("yolov8n.pt"), files.map { it.getValue("path").jsonPrimitive.content })

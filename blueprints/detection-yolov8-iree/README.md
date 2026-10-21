@@ -17,7 +17,7 @@ library**. You materialize it into a cartridge with *your* profile.
 |---|---|
 | Recipe | [`blueprint.json`](blueprint.json) |
 | Weights | `Ultralytics/YOLOv8` @ `27f858f2…`: `yolov8n.pt`, pinned by SHA-256 |
-| Weights license | **AGPL-3.0** at the publisher (model card `license: agpl-3.0`, verified 2026-10-16). `redistribution: restricted` — see *Licensing* before you ship a cartridge |
+| Weights license | **AGPL-3.0**, as Ultralytics publishes it (model card `license: agpl-3.0`, verified 2026-10-16; `pyproject.toml` `license = "AGPL-3.0"`, verified 2026-10-21). `redistribution: restricted` — see *Licensing* before you ship a cartridge |
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Engine, post-processing, pack locator and the YOLOv8 graph are common code; the Android runtime binding lands with `IreeModuleRunner` |
 | Targets | `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`) |

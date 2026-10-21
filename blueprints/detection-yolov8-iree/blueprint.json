@@ -15,7 +15,7 @@
       "checkpoint": "Ultralytics/YOLOv8 yolov8n.pt",
       "upstream": {
         "source": "https://huggingface.co/Ultralytics/YOLOv8",
-        "license": "AGPL-3.0-only"
+        "license": "AGPL-3.0"
       }
     },
     "modality": "image",
@@ -152,7 +152,7 @@
           "size": 6534387
         }
       ],
-      "license": "AGPL-3.0-only",
+      "license": "AGPL-3.0",
       "license_url": "https://huggingface.co/Ultralytics/YOLOv8/blob/27f858f2dc238503a66ce10248cf7ec71a3ded5d/README.md",
       "redistribution": "restricted"
     }
