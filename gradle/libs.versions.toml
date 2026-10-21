@@ -14,12 +14,15 @@ androidCompileSdk = "36"
 androidMinSdk = "29"
 kotlinxCoroutines = "1.11.0"
 kotlinxIo = "0.9.1"
+# SKaiNET-audio: Whisper's log-mel frontend for the Whisper binding
+skainetAudio = "0.2.2"
 
 [libraries]
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 skainet-data-source = { module = "sk.ainet.core:skainet-data-source", version.ref = "skainet" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinxIo" }
+audio-mel = { module = "sk.ainet.audio:audio-mel", version.ref = "skainetAudio" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 optimumcode-json-schema-validator = { module = "io.github.optimumcode:json-schema-validator", version.ref = "jsonSchemaValidator" }
 transformers-bom = { module = "sk.ainet.transformers:skainet-transformers-bom", version.ref = "transformers" }
@@ -28,6 +31,7 @@ transformers-agent = { module = "sk.ainet.transformers:skainet-transformers-agen
 transformers-runtime-gemma-iree = { module = "sk.ainet.transformers:skainet-transformers-runtime-gemma-iree" }
 transformers-runtime-iree-android = { module = "sk.ainet.transformers:skainet-transformers-runtime-iree-android" }
 transformers-inference-moonshine = { module = "sk.ainet.transformers:skainet-transformers-inference-moonshine" }
+transformers-inference-whisper = { module = "sk.ainet.transformers:skainet-transformers-inference-whisper" }
 transformers-inference-functiongemma = { module = "sk.ainet.transformers:skainet-transformers-inference-functiongemma", version.ref = "transformers" }
 transformers-inference-qwen = { module = "sk.ainet.transformers:skainet-transformers-inference-qwen", version.ref = "transformers" }
 skainet-io-core = { module = "sk.ainet.core:skainet-io-core", version.ref = "skainet" }
