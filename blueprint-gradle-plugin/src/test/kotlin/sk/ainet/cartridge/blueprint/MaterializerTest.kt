@@ -1,7 +1,9 @@
 package sk.ainet.cartridge.blueprint
 
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -253,6 +255,53 @@ class MaterializerTest {
         val flavor = (de.descriptor["flavors"] as JsonArray).single().jsonObject
         assertEquals("nlu-toy-iree-cpu-arm64-de", flavor["id"]!!.jsonPrimitive.content)
         assertEquals(listOf("de"), de.manifest["provenance"]!!.jsonObject["materialization"]!!.jsonObject["flavors"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    /**
+     * The fixture with every model and weights output moved into the `de` flavor: a blueprint without a base model.
+     * The flavor overrides the model and the languages; the template keeps an attribute the merge must not lose.
+     */
+    private fun flavorOnly(flavorMeasurements: String = ""): Fixture {
+        val f = Fixture(withGermanFlavor = true, selectFlavors = listOf("de"))
+        val bp = Json.parseToJsonElement(f.blueprintFile.readText()).jsonObject.toMutableMap()
+        val template = bp.getValue("descriptor_template").jsonObject.toMutableMap()
+        template["attributes"] = Json.parseToJsonElement("""{"languages":[],"window_s":4}""")
+        template["model"] = Json.parseToJsonElement("""{"name":"toy","checkpoint":"toy/base-en"}""")
+        bp["descriptor_template"] = JsonObject(template)
+        bp["flavors"] = Json.parseToJsonElement(
+            """[{"id":"de","sources":["weights-de"],"descriptor_overrides":{"attributes":{"languages":["de"]},"model":{"checkpoint":"toy/de"}}}]""",
+        )
+        bp["outputs"] = JsonArray(bp.getValue("outputs").jsonArray.map { o ->
+            val role = o.jsonObject["role"]!!.jsonPrimitive.content
+            if (role == "model" || role == "weights") JsonObject(o.jsonObject + ("flavor" to JsonPrimitive("de"))) else o
+        })
+        f.blueprintFile.writeText(JsonObject(bp).toString())
+        if (flavorMeasurements.isNotEmpty()) {
+            f.profileFile.writeText(f.profileFile.readText().replace(
+                """"measurements":{"performance":{"latency_p50_ms":12.5,"measured_on":"synthetic test device"}}""",
+                """"measurements":{"performance":{"latency_p50_ms":12.5,"measured_on":"synthetic test device"},"flavors":{"de":$flavorMeasurements}}""",
+            ))
+        }
+        return f
+    }
+
+    @Test
+    fun `without a base model a lone flavor describes the pack itself`() {
+        val d = materialize(flavorOnly()).descriptor
+        // deep merge: the flavor's checkpoint over the template's, the template's name kept; languages replaced
+        assertEquals("toy/de", d["model"]!!.jsonObject["checkpoint"]!!.jsonPrimitive.content)
+        assertEquals("toy", d["model"]!!.jsonObject["name"]!!.jsonPrimitive.content)
+        val attributes = d["attributes"]!!.jsonObject
+        assertEquals(listOf("de"), attributes["languages"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals("4", attributes["window_s"]!!.jsonPrimitive.content)
+        // no second identity for the same contents
+        assertFalse("flavors" in d)
+    }
+
+    @Test
+    fun `a lone flavor's own measurements become the pack's`() {
+        val d = materialize(flavorOnly("""{"performance":{"latency_p50_ms":30,"measured_on":"synthetic test device, de"}}""")).descriptor
+        assertEquals("30", d["performance"]!!.jsonObject["latency_p50_ms"]!!.jsonPrimitive.content)
     }
 
     @Test
