@@ -19,21 +19,22 @@ plugins {
 }
 
 /**
- * SKaiNET core with `Letterbox` / `nonMaxSuppression` (skainet-data-media). UNTIL SKAINET RELEASES
- * `skainet-data-media` (SKaiNET PR #1437): build with `-PskainetVersion=0.60.1-SNAPSHOT -PuseMavenLocal=true`
- * against a snapshot published from SKaiNET branch `refactor/yolo-out-of-core`
- * (`publishToMavenLocal -PVERSION_NAME=0.60.1-SNAPSHOT`). The module is only included in the build under
- * that opt-in (see settings.gradle.kts); once released, pin the real version here and drop the gate.
+ * SKaiNET core with `Letterbox` / `nonMaxSuppression` (skainet-data-media). Released: SKaiNET 0.62.1
+ * carries skainet-data-media (first publish) and the lowering fixes of SKaiNET PR #1437 — everything
+ * here resolves from Maven Central. Intentionally ahead of the catalog's `skainet`, which the other
+ * blueprints share; override with `-PskainetVersion=` to try another engine.
  */
-val skainetVersion = providers.gradleProperty("skainetVersion").getOrElse("0.60.1")
+val skainetVersion = providers.gradleProperty("skainetVersion").getOrElse("0.62.1")
 
 /**
  * The SKaiNET-transformers runtime with `IreeModuleRunner` + `libskainet_iree_module.so` (branch
- * `feature/iree-module-runner`, SKaiNET-transformers PR #513). UNTIL A RELEASE CARRIES IT:
- * `-PmoduleRuntimeVersion=0.61.1-SNAPSHOT` with `-PuseMavenLocal=true`, against
- * `:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=0.61.1-SNAPSHOT`.
+ * `feature/iree-module-runner`, SKaiNET-transformers PR #513 — NOT in 0.63.0). UNTIL A RELEASE CARRIES IT:
+ * `-PmoduleRuntimeVersion=0.63.1-SNAPSHOT` with `-PuseMavenLocal=true`, against
+ * `:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=0.63.1-SNAPSHOT` from that branch.
+ * This default is the smallest release number that could ship it; the module stays out of the default
+ * build until one does (see settings.gradle.kts).
  */
-val moduleRuntimeVersion = providers.gradleProperty("moduleRuntimeVersion").getOrElse("0.61.1")
+val moduleRuntimeVersion = providers.gradleProperty("moduleRuntimeVersion").getOrElse("0.63.1")
 
 kotlin {
     explicitApi()
@@ -49,7 +50,7 @@ kotlin {
             instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         }
     }
-    // SKaiNET 0.60 inlines from JVM 21 bytecode (same as embedding-leaf-skainet).
+    // SKaiNET inlines from JVM 21 bytecode (same as embedding-leaf-skainet).
     jvm {
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21) }
         // The export tool (YoloV8ExportCli, src/jvmExport): its own compilation, so the library never carries the
