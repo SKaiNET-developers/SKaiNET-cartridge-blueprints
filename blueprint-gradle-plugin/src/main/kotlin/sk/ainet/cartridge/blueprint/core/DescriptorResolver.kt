@@ -22,6 +22,17 @@ object DescriptorResolver {
         return profile.cartridge.id ?: target.cartridgeId ?: "${blueprint.id}-${target.id}"
     }
 
+    /** Output roles that carry the model itself: a blueprint without a flavor-less one has no base model. */
+    private val MODEL_ROLES = setOf("model", "weights")
+
+    /** [override] over [base]: objects merge key by key, recursively; anything else replaces. */
+    private fun deepMerge(base: JsonElement?, override: JsonElement): JsonElement =
+        if (base is JsonObject && override is JsonObject) {
+            JsonObject(LinkedHashMap<String, JsonElement>(base).apply { override.forEach { (k, v) -> put(k, deepMerge(base[k], v)) } })
+        } else {
+            override
+        }
+
     /** The descriptor schema's explicit "not measured" form: `unmeasured` plus which harness would measure it. */
     private val UNMEASURED_QUALITY: JsonObject = buildJsonObject {
         put("unmeasured", JsonPrimitive(true))
@@ -50,9 +61,24 @@ object DescriptorResolver {
         // The descriptor schema requires `quality`. Unmeasured is a legitimate, explicit state (the spec's honesty
         // rule) — what is never legitimate is a number that was not measured on these artifacts.
         fields["quality"] = measurements.quality ?: UNMEASURED_QUALITY
+
+        // A blueprint whose model and weights all belong to flavors has no base model: with exactly one flavor
+        // selected, that flavor IS the pack, so it describes the top level (deep-merged over the template, its own
+        // measurements over the profile's) instead of standing next to a template model the pack does not contain.
+        val selected = blueprint.flavors.filter { it.id in profile.flavors }
+        val hasBaseModel = blueprint.outputs.any { it.flavor == null && it.role in MODEL_ROLES }
+        val packIsFlavor = selected.size == 1 && !hasBaseModel
+        if (packIsFlavor) {
+            val flavor = selected.single()
+            flavor.descriptorOverrides?.forEach { (k, v) -> fields[k] = deepMerge(fields[k], v) }
+            measurements.flavors[flavor.id]?.let { m ->
+                m.performance?.let { fields["performance"] = it }
+                m.quality?.let { fields["quality"] = it }
+            }
+        }
         profile.descriptorOverrides?.forEach { (k, v) -> fields[k] = v }
 
-        val flavors = blueprint.flavors.filter { it.id in profile.flavors }.map { flavor ->
+        val flavors = if (packIsFlavor) emptyList() else selected.map { flavor ->
             val m = measurements.flavors[flavor.id]
             buildJsonObject {
                 put("id", JsonPrimitive("${fields.getValue("id").let { (it as JsonPrimitive).content }}-${flavor.id}"))
