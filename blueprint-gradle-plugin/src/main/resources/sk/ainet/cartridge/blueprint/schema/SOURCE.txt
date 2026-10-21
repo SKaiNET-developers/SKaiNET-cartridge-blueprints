@@ -1,1 +1,1 @@
-spec commit the schemas were copied from: 5fc7b16 (2026-09-21)
+spec commit the schemas were copied from: 5fc7b16 (2026-09-21); cartridge-descriptor.schema.json from c46d1c9 (2026-10-21, ADR-016, SKaiNET-cartridge PR #15)
