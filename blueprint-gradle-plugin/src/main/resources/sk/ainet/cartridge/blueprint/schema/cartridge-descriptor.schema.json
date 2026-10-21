@@ -145,13 +145,22 @@
     },
     "quality": {
       "type": "object",
-      "description": "Task-level quality, measured — the metric a swap or fallback decision actually needs (parity-within-tolerance does NOT measure task quality). MANDATORY for task=asr: either a measured wer, or an explicit unmeasured=true with the harness that will produce it — never silently absent.",
+      "description": "Task-level quality, measured — the metric a swap or fallback decision actually needs (parity-within-tolerance does NOT measure task quality). MANDATORY for task=asr: either a measured wer, or an explicit unmeasured=true with the harness that will produce it — never silently absent. Other tasks state their own metric (ADR-016): a measured metric + value on a named dataset, or unmeasured=true with the harness.",
       "additionalProperties": true,
       "properties": {
         "wer": {
           "type": "number",
           "minimum": 0,
           "description": "Word error rate on the stated dataset (asr)."
+        },
+        "metric": {
+          "type": "string",
+          "description": "Name of the task-level metric in `value` (ADR-016), for tasks whose quality is not a word error rate — defined by the task profile where one exists.",
+          "examples": ["intent_accuracy", "map50_95", "top1"]
+        },
+        "value": {
+          "type": "number",
+          "description": "The measured value of `metric` on `dataset`. Ratios are fractions in [0, 1] (0.92, not 92)."
         },
         "dataset": { "type": "string", "examples": ["fleurs-de-commands-v1"] },
         "dataset_digest": {
@@ -171,6 +180,7 @@
       },
       "oneOf": [
         { "required": ["wer", "dataset", "measured_on"] },
+        { "required": ["metric", "value", "dataset", "measured_on"] },
         { "required": ["unmeasured", "harness"] }
       ]
     },
@@ -252,7 +262,10 @@
     }
   },
   "if": { "properties": { "task": { "const": "asr" } } },
-  "then": { "required": ["quality"] },
+  "then": {
+    "required": ["quality"],
+    "properties": { "quality": { "anyOf": [{ "required": ["wer"] }, { "required": ["unmeasured"] }] } }
+  },
   "$defs": {
     "ioPort": {
       "type": "object",
