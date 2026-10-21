@@ -8,10 +8,12 @@ This directory is a [cartridge blueprint](https://skainet-developers.github.io/S
 the Kotlin API, the model graph and the complete build recipe — **no weights, no compiled model, no native
 library**. You materialize it into a cartridge with *your* profile.
 
-> **Status — work in progress.** The Kotlin API, the post-processing and the `fetch`, `convert`, `export`,
-> `parameters` and `compile` steps run and are tested; the exported graph matches ONNX Runtime on the host. The
-> runtime (`IreeModuleRunner` in SKaiNET-transformers) is not released yet, so a cartridge cannot be materialized
-> today.
+> **Status — verified end to end, waiting on releases.** Every step runs and is tested: the exported graph matches
+> ONNX Runtime on the host (eager and compiled, see *Verification*), and cartridges materialized from this blueprint
+> pass the golden run on a Pixel 8a through the public `yolo/v1` API (both targets detect 4 person + 1 bus on the
+> reference image with identical scores; p50 269 ms on Vulkan, 2205 ms on the CPU). Until SKaiNET ships
+> `skainet-data-media` and SKaiNET-transformers ships `IreeModuleRunner`, build against local snapshots:
+> `-PskainetVersion=… -PmoduleRuntimeVersion=… -PuseMavenLocal=true`.
 
 | | |
 |---|---|
@@ -96,10 +98,31 @@ stride scaling and class sigmoid run in-graph, so the cartridge's output is the 
 `parameters` moves the weights into `params.irpa` (scope `model`); `compile` builds `yolov8n.vmfb` for the
 profile's target, referencing the archive.
 
-## Steps 5–6 — Runtime, materialize *(pending)*
+## Steps 5–6 — Runtime, materialize
 
-`extractRuntime` (`libskainet_iree_module.so` from the SKaiNET-transformers AAR) and `materializeCartridge` run
-once the runtime is released.
+```bash
+./gradlew :blueprints:detection-yolov8-iree:materializeCartridge -Pprofile=profiles/mine.json
+```
+
+`extractRuntime` pulls `libskainet_iree_module.so` for the target ABI out of the SKaiNET-transformers AAR;
+`materializeCartridge` assembles and signs the pack. The profile must carry `measurements.performance` you measured
+yourself (the device test below prints them) and your signing key reference.
+
+## Verification
+
+Two checks beyond the unit tests, neither needs anything committed here:
+
+- **Host parity, eager vs ONNX Runtime** (the model itself, no IREE): `parityEager -Pimage=<photo>` bakes the
+  initializers into the graph as the export does but runs it on the CPU backend, writing `input.f32` (the engine's
+  own letterbox) and `eager-head.f32` into `build/parity` (`-PparityDir` overrides);
+  [`tools/ort-head.py`](tools/ort-head.py) runs ONNX Runtime on that same input; the second `parityEager` run
+  compares — head within rtol/atol 1e-2 and identical post-NMS detections, or a non-zero exit.
+  [`tools/synthetic-set.py`](tools/synthetic-set.py) generates a deterministic, license-free image set (noise,
+  gradient, checkerboard at mixed aspect ratios) for parity runs beyond your photos.
+- **On-device golden run** (the materialized packs through the public API): `connectedAndroidTest` runs
+  `YoloV8CartridgeDeviceTest`, which downloads every pack a host-side server lists, opens it with
+  `YoloV8Cartridge.open`, and asserts the reference image's detections; it logs create/first/p50/p95 and PSS per
+  pack — the numbers for your profile's `measurements`. See the test's KDoc for the one-line server setup.
 
 ## Use from an app
 

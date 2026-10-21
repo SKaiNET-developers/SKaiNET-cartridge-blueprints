@@ -40,6 +40,11 @@ kotlin {
         compileSdk = libs.versions.androidCompileSdk.get().toInt()
         minSdk = libs.versions.androidMinSdk.get().toInt()
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+        // On-device check of the materialized pack through the public engine API (src/androidDeviceTest,
+        // YoloV8CartridgeDeviceTest) — the E2 golden run.
+        withDeviceTest {
+            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        }
     }
     // SKaiNET 0.60 inlines from JVM 21 bytecode (same as embedding-leaf-skainet).
     jvm {
@@ -53,6 +58,8 @@ kotlin {
                 implementation("sk.ainet.core:skainet-compile-hlo:$skainetVersion")
                 implementation("sk.ainet.core:skainet-compile-dag:$skainetVersion")
                 implementation("sk.ainet.core:skainet-io-onnx:$skainetVersion")
+                implementation("sk.ainet.core:skainet-backend-cpu:$skainetVersion")   // eager forward of the parity check
+
                 implementation("pro.streem.pbandk:pbandk-runtime:0.16.0")   // onnx.ModelProto decoding (SKaiNET's pin)
                 implementation(libs.kotlinx.serialization.json)
             }
@@ -78,6 +85,11 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+        }
+        getByName("androidDeviceTest").dependencies {
+            implementation(libs.androidx.test.junit)
+            implementation(libs.androidx.test.runner)
+            implementation(libs.kotlinx.coroutines.core)
         }
     }
 }
@@ -138,6 +150,29 @@ val export = tasks.register<JavaExec>("exportStableHlo") {
         environment("YOLO_ONNX", onnx.get().absolutePath)
         environment("YOLO_OUT", exportDir.get().file("yolov8n.mlir").asFile.absolutePath)
         environment("YOLO_INPUT_SIZE", "640")   // blueprint.json attributes.input_resolution
+    }
+}
+
+// Not a recipe step: the B4 host parity of the eager SKaiNET forward against an ONNX Runtime reference
+// (YoloV8ParityCli — see its doc for the two-phase flow). `-Pimage=<photo>` picks the test image,
+// `-PparityDir=<dir>` the work directory (default build/parity), so a set of images keeps separate artifacts.
+tasks.register<JavaExec>("parityEager") {
+    group = "verification"
+    description = "parity: ONNX initializers -> eager SKaiNET forward vs ONNX Runtime head (YoloV8ParityCli)"
+    classpath = files(exportCompilation.output.allOutputs, exportCompilation.runtimeDependencyFiles)
+    mainClass.set("sk.ainet.cartridge.detection.yolov8.export.YoloV8ParityCliKt")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
+    maxHeapSize = "4g"
+    val onnx = convertOnnx.map { it.outputs.files.singleFile }
+    val parityDir = providers.gradleProperty("parityDir")
+        .map { layout.projectDirectory.dir(it) }
+        .orElse(layout.buildDirectory.dir("parity").get())
+    val image = providers.gradleProperty("image")
+    doFirst {
+        environment("YOLO_ONNX", onnx.get().absolutePath)
+        environment("YOLO_IMAGE", image.orNull ?: error("pass -Pimage=<test image> (not committed; e.g. bus.jpg)"))
+        environment("YOLO_WORK", parityDir.get().asFile.absolutePath)
+        environment("YOLO_INPUT_SIZE", "640")
     }
 }
 
