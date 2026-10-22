@@ -4,8 +4,8 @@ plugins {
     `kotlin-dsl`
     // Keep in step with `kotlin` in gradle/libs.versions.toml — a plugins block cannot read the
     // catalog, so these two literals are the third place the version lives.
-    kotlin("jvm") version "2.4.20"
-    kotlin("plugin.serialization") version "2.4.20"
+    kotlin("jvm") version "2.4.21"
+    kotlin("plugin.serialization") version "2.4.21"
     `java-gradle-plugin`
 }
 
