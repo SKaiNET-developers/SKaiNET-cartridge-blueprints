@@ -44,6 +44,18 @@ class PackDirTest {
     }
 
     @Test
+    fun theIncrementalFrontendIsOptional() {
+        val root = pack(listOf("de"), accelerator = true)
+        assertNull(PackDir(root.path).model("de").frontendStepVmfb)
+        File(root, "artifacts/model/de/frontend_step.vmfb").writeBytes(byteArrayOf(5))
+        val de = PackDir(root.path).model("de")
+        assertTrue(de.frontendStepVmfb.toString().endsWith("artifacts/model/de/frontend_step.vmfb"))
+        assertEquals(9, de.all.size)
+        // the runtime looks for it next to frontend.vmfb
+        assertEquals(de.frontendVmfb.parent, de.frontendStepVmfb!!.parent)
+    }
+
+    @Test
     fun aMissingFlavorOrFileIsReportedByName() {
         val p = PackDir(pack(listOf("en"), accelerator = false).path)
         assertTrue(!p.targetsAccelerator)
