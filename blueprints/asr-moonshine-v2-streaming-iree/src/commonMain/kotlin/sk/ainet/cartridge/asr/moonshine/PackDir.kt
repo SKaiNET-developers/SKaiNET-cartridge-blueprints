@@ -39,6 +39,8 @@ public class PackDir(public val root: Path) {
     /**
      * The model files of [language], by role directory: five graphs, the parameter archive, the two tables. The
      * archive is absent when the target's decoder graphs carry their weights inline (int8 weights, see the blueprint).
+     * `frontend_step.vmfb`, the incremental frontend, is optional: packs from before it have none, and the runtime
+     * finds it next to `frontend.vmfb` by name.
      */
     public fun model(language: String): ModelFiles = ModelFiles(
         frontendVmfb = file("artifacts/model/$language/frontend.vmfb"),
@@ -46,6 +48,7 @@ public class PackDir(public val root: Path) {
         adapterVmfb = file("artifacts/model/$language/adapter.vmfb"),
         prefillVmfb = file("artifacts/model/$language/prefill.vmfb"),
         stepVmfb = file("artifacts/model/$language/step.vmfb"),
+        frontendStepVmfb = Path(root, "artifacts/model/$language/frontend_step.vmfb").takeIf { SystemFileSystem.exists(it) },
         paramsIrpa = Path(root, "artifacts/weights/$language/params.irpa").takeIf { SystemFileSystem.exists(it) },
         vocabBin = file("artifacts/tokenizer/$language/vocab.bin"),
         decEmbedBin = file("artifacts/weights/$language/dec_embed.bin"),
@@ -53,9 +56,9 @@ public class PackDir(public val root: Path) {
 
     public data class ModelFiles(
         val frontendVmfb: Path, val encoderVmfb: Path, val adapterVmfb: Path, val prefillVmfb: Path, val stepVmfb: Path,
-        val paramsIrpa: Path?, val vocabBin: Path, val decEmbedBin: Path,
+        val paramsIrpa: Path?, val vocabBin: Path, val decEmbedBin: Path, val frontendStepVmfb: Path? = null,
     ) {
-        public val all: List<Path> get() = listOfNotNull(frontendVmfb, encoderVmfb, adapterVmfb, prefillVmfb, stepVmfb, paramsIrpa, vocabBin, decEmbedBin)
+        public val all: List<Path> get() = listOfNotNull(frontendVmfb, encoderVmfb, adapterVmfb, prefillVmfb, stepVmfb, paramsIrpa, vocabBin, decEmbedBin, frontendStepVmfb)
     }
 
     private fun file(relative: String): Path = Path(root, relative).also {

@@ -85,7 +85,10 @@ val flavors = mapOf("en" to "weights-en", "de" to "weights-de")
 
 // The exporter's shapes, fixed by the runtime's compiled-in streaming geometry (blueprint.json steps[export].params).
 val exportEnv = mapOf("MOONSHINE_FE_SAMPLES" to "21760", "MOONSHINE_ENC_FRAMES" to "64", "MOONSHINE_MAX_MEM" to "256")
-val graphs = listOf("frontend", "encoder", "adapter", "prefill", "with_past")
+// The incremental frontend: the same graph for 16 + 4 frames, which the runtime runs as the audio arrives when
+// frontend_step.vmfb sits next to frontend.vmfb (blueprint.json steps[export].params.frontend_step_env).
+val frontendStepEnv = mapOf("MOONSHINE_FE_SAMPLES" to "6400", "MOONSHINE_GRAPH" to "frontend")
+val graphs = listOf("frontend", "encoder", "adapter", "prefill", "with_past", "frontend_step")
 
 for ((language, source) in flavors) {
     val lang = language.replaceFirstChar(Char::uppercase)
@@ -109,6 +112,24 @@ for ((language, source) in flavors) {
         }
     }
 
+    // export — the frontend once more, for the incremental frontend's 6400-sample input.
+    val exportStepDir = work.map { it.dir("export-frontend-step/$language") }
+    val exportStep = tasks.register<JavaExec>("exportFrontendStep$lang") {
+        group = "cartridge blueprint steps"
+        description = "export: the $language frontend for the incremental frontend's 16 + 4 frames (Kotlin, SKaiNET-transformers)"
+        classpath = exportTool
+        mainClass.set("sk.ainet.models.moonshine.MoonshineV2ExportCliKt")
+        maxHeapSize = "12g"
+        inputs.files(blueprint.sourceFile(source, "config.json"), blueprint.sourceFile(source, "model.safetensors"), blueprint.sourceFile(source, "tokenizer.json")).withPathSensitivity(PathSensitivity.NONE)
+        inputs.property("env", frontendStepEnv)
+        outputs.dir(exportStepDir)
+        environment(frontendStepEnv)
+        doFirst {
+            environment("MOONSHINE_MODEL_DIR", snapshotDir.get().absolutePath)
+            environment("MOONSHINE_OUT_DIR", exportStepDir.get().asFile.apply { mkdirs() }.absolutePath)
+        }
+    }
+
     // convert — the decoder weights out of the graph into one parameter archive (identical for prefill and step).
     val parameters = tasks.register<IreeExportParametersTask>("parameters$lang") {
         group = "cartridge blueprint steps"
@@ -126,6 +147,12 @@ for ((language, source) in flavors) {
         input.set(exportDir.map { it.file("frontend.mlir") })
         output.set(work.map { it.file("convert/$language/frontend-im2col.mlir") })
     }
+    val im2colStep = tasks.register<Conv1dIm2colTask>("im2colFrontendStep$lang") {
+        group = "cartridge blueprint steps"
+        dependsOn(exportStep)
+        input.set(exportStepDir.map { it.file("frontend.mlir") })
+        output.set(work.map { it.file("convert/$language/frontend_step-im2col.mlir") })
+    }
     val useIm2col = selected.map { it.params["conv1d_im2col"] == "true" }
     // graphs whose large matrices go int8 (params.int8_weights = "encoder,adapter,…")
     val int8Graphs = selected.map { t -> t.params["int8_weights"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
@@ -134,12 +161,16 @@ for ((language, source) in flavors) {
     for (graph in graphs) {
         val g = graph.split('_').joinToString("") { it.replaceFirstChar(Char::uppercase) }
         val outName = if (graph == "with_past") "step" else graph
-        val source = if (graph == "frontend") {
-            useIm2col.flatMap { if (it) im2col.flatMap { t -> t.output } else exportDir.map { d -> d.file("frontend.mlir") } }
-        } else {
-            exportDir.map { it.file("$graph.mlir") }
+        val source = when (graph) {
+            "frontend" -> useIm2col.flatMap { if (it) im2col.flatMap { t -> t.output } else exportDir.map { d -> d.file("frontend.mlir") } }
+            "frontend_step" -> useIm2col.flatMap { if (it) im2colStep.flatMap { t -> t.output } else exportStepDir.map { d -> d.file("frontend.mlir") } }
+            else -> exportDir.map { it.file("$graph.mlir") }
         }
-        val sourceTasks = if (graph == "frontend") useIm2col.map { if (it) listOf(im2col) else emptyList() } else provider { emptyList() }
+        val sourceTasks = when (graph) {
+            "frontend" -> useIm2col.map { if (it) listOf(im2col) else emptyList() }
+            "frontend_step" -> useIm2col.map { if (it) listOf(im2colStep) else listOf(exportStep) }
+            else -> provider { emptyList() }
+        }
 
         // convert (graphs listed in params.int8_weights) — weight-only int8, dequantized in the graph.
         val int8 = tasks.register<Int8WeightsTask>("int8$lang$g") {
@@ -164,7 +195,7 @@ for ((language, source) in flavors) {
             if (graph == "prefill" || graph == "with_past") parameterScope.set(useInt8.map { if (it) null else "model" })
             output.set(work.zip(selected) { w, t -> w.file("compile/${t.id}/$language/$outName.vmfb") })
         }
-        blueprint.product("$language-$outName-vmfb", compile.flatMap { it.output }, flavor = language)
+        blueprint.product("$language-${outName.replace('_', '-')}-vmfb", compile.flatMap { it.output }, flavor = language)
     }
     // The decoder's weight files: the embedding rows, and the archive unless both decoder graphs are int8.
     val archiveRead = int8Graphs.map { !("prefill" in it && "with_past" in it) }

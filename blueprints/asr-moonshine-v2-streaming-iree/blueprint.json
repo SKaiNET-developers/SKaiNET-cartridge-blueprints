@@ -326,16 +326,23 @@
         "de-prefill-mlir",
         "de-with-past-mlir",
         "de-dec-embed",
-        "de-vocab"
+        "de-vocab",
+        "en-frontend-step-mlir",
+        "de-frontend-step-mlir"
       ],
-      "description": "Kotlin (MoonshineV2ExportCli): Hugging Face snapshot -> frontend, encoder, adapter, prefill, with_past StableHLO graphs (weights folded), dec_embed.bin, vocab.bin. Geometry and per-layer attention bands come from the checkpoint. Runs once per selected flavor.",
+      "description": "Kotlin (MoonshineV2ExportCli): Hugging Face snapshot -> frontend, encoder, adapter, prefill, with_past StableHLO graphs (weights folded), dec_embed.bin, vocab.bin. Geometry and per-layer attention bands come from the checkpoint. The frontend is exported a second time for the incremental frontend (frontend_step). Runs once per selected flavor.",
       "params": {
         "env": {
           "MOONSHINE_FE_SAMPLES": "21760",
           "MOONSHINE_ENC_FRAMES": "64",
           "MOONSHINE_MAX_MEM": "256"
         },
-        "note": "The shapes are the runtime's compiled-in streaming geometry: 68 frontend frames (64 + 4 left context), a 64-frame encoder window, a 256-frame (5.12 s) padded decoder memory."
+        "note": "The shapes are the runtime's compiled-in streaming geometry: 68 frontend frames (64 + 4 left context), a 64-frame encoder window, a 256-frame (5.12 s) padded decoder memory.",
+        "frontend_step_env": {
+          "MOONSHINE_FE_SAMPLES": "6400",
+          "MOONSHINE_GRAPH": "frontend"
+        },
+        "frontend_step_note": "The frontend once more for 80 frames of 200 Hz = 16 + 4 frames: the runtime (SKaiNET-transformers, from the release that names frontend_step.vmfb in IreeMoonshineStream.OPTIONAL_FILE_NAMES) runs it in 0.32 s chunks as the audio arrives when frontend_step.vmfb sits next to frontend.vmfb. Same features bit for bit; older runtimes ignore the file."
       }
     },
     {
@@ -360,11 +367,15 @@
       "tool": "blueprint-plugin",
       "uses": [
         "en-frontend-mlir",
-        "de-frontend-mlir"
+        "de-frontend-mlir",
+        "en-frontend-step-mlir",
+        "de-frontend-step-mlir"
       ],
       "produces": [
         "en-frontend-im2col-mlir",
-        "de-frontend-im2col-mlir"
+        "de-frontend-im2col-mlir",
+        "en-frontend-step-im2col-mlir",
+        "de-frontend-step-im2col-mlir"
       ],
       "description": "Only for targets with params.conv1d_im2col = \"true\": the frontend's two strided 1-D convolutions as im2col (strided slices stacked over channels) + one matmul each, same arithmetic. The Torq-fork llvm-cpu backend leaves the generalized convolution unvectorized (3.9 s per window on a Cortex-A55); as a matmul it takes 0.17 s. The compile step then reads the rewritten frontend."
     },
@@ -408,7 +419,9 @@
         "de-encoder-mlir",
         "de-adapter-mlir",
         "de-prefill-mlir",
-        "de-with-past-mlir"
+        "de-with-past-mlir",
+        "en-frontend-step-mlir",
+        "de-frontend-step-mlir"
       ],
       "produces": [
         "en-frontend-vmfb",
@@ -420,9 +433,11 @@
         "de-encoder-vmfb",
         "de-adapter-vmfb",
         "de-prefill-vmfb",
-        "de-step-vmfb"
+        "de-step-vmfb",
+        "en-frontend-step-vmfb",
+        "de-frontend-step-vmfb"
       ],
-      "description": "StableHLO -> .vmfb for the target: frontend, encoder, adapter with weights embedded; prefill and step referencing the parameter archive under scope `model`. Runs once per selected flavor.",
+      "description": "StableHLO -> .vmfb for the target: frontend, frontend_step, encoder, adapter with weights embedded; prefill and step referencing the parameter archive under scope `model`. Runs once per selected flavor.",
       "per_target": true
     },
     {
@@ -458,7 +473,9 @@
         "de-prefill-vmfb",
         "de-step-vmfb",
         "de-weights",
-        "de-vocab"
+        "de-vocab",
+        "en-frontend-step-vmfb",
+        "de-frontend-step-vmfb"
       ]
     },
     {
@@ -485,6 +502,15 @@
       "from": "en-frontend-vmfb",
       "role": "model",
       "path": "artifacts/model/en/frontend.vmfb",
+      "derived_from": [
+        "weights-en"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "en-frontend-step-vmfb",
+      "role": "model",
+      "path": "artifacts/model/en/frontend_step.vmfb",
       "derived_from": [
         "weights-en"
       ],
@@ -548,6 +574,15 @@
       "from": "de-frontend-vmfb",
       "role": "model",
       "path": "artifacts/model/de/frontend.vmfb",
+      "derived_from": [
+        "weights-de"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "de-frontend-step-vmfb",
+      "role": "model",
+      "path": "artifacts/model/de/frontend_step.vmfb",
       "derived_from": [
         "weights-de"
       ],
