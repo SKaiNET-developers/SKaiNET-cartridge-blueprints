@@ -15,6 +15,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.vanniktech.mavenPublish)   // published: sk.ainet.cartridge:detection-yolov8-iree (see publish.yml)
     id("sk.ainet.cartridge.blueprint")
 }
 
@@ -27,12 +28,9 @@ plugins {
 val skainetVersion = providers.gradleProperty("skainetVersion").getOrElse("0.62.1")
 
 /**
- * The SKaiNET-transformers runtime with `IreeModuleRunner` + `libskainet_iree_module.so` (branch
- * `feature/iree-module-runner`, SKaiNET-transformers PR #513 — NOT in 0.63.0). UNTIL A RELEASE CARRIES IT:
- * `-PmoduleRuntimeVersion=0.63.1-SNAPSHOT` with `-PuseMavenLocal=true`, against
- * `:llm-runtime:iree-android:publishToMavenLocal -PVERSION_NAME=0.63.1-SNAPSHOT` from that branch.
- * This default is the smallest release number that could ship it; the module stays out of the default
- * build until one does (see settings.gradle.kts).
+ * The SKaiNET-transformers runtime with `IreeModuleRunner` + `libskainet_iree_module.so` — released:
+ * 0.63.1 carries it (PR #513), everything resolves from Maven Central. Override with
+ * `-PmoduleRuntimeVersion=` to try another runtime.
  */
 val moduleRuntimeVersion = providers.gradleProperty("moduleRuntimeVersion").getOrElse("0.63.1")
 

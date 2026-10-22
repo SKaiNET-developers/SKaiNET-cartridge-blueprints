@@ -8,16 +8,12 @@ This directory is a [cartridge blueprint](https://skainet-developers.github.io/S
 the Kotlin API, the model graph and the complete build recipe — **no weights, no compiled model, no native
 library**. You materialize it into a cartridge with *your* profile.
 
-> **Status — verified end to end, waiting on releases.** Every step runs and is tested: the exported graph matches
+> **Status — verified end to end, everything released.** Every step runs and is tested: the exported graph matches
 > ONNX Runtime on the host (eager and compiled, see *Verification*), and cartridges materialized from this blueprint
 > pass the golden run on a Pixel 8a through the public `yolo/v1` API (both targets detect 4 person + 1 bus on the
-> reference image with identical scores; p50 269 ms on Vulkan, 2205 ms on the CPU). The SKaiNET side is
-> released: 0.62.1 ships `skainet-data-media` and the lowering fixes, and everything `sk.ainet.core:*` here
-> resolves from Maven Central. Still waiting on one piece: `IreeModuleRunner` (SKaiNET-transformers PR #513,
-> not in 0.63.0) — until a release carries it, build with
-> `-PmoduleRuntimeVersion=0.63.1-SNAPSHOT -PuseMavenLocal=true` against a local publish of that branch; the
-> same opt-in includes this module in the build at all (`settings.gradle.kts`), so a plain `./gradlew build`
-> of the repo stays green.
+> reference image with identical scores; p50 269 ms on Vulkan, 2205 ms on the CPU). Everything resolves from
+> Maven Central: SKaiNET 0.62.1 ships `skainet-data-media` and the lowering fixes, and SKaiNET-transformers
+> 0.63.1 ships `IreeModuleRunner` (PR #513).
 
 | | |
 |---|---|
@@ -27,7 +23,7 @@ library**. You materialize it into a cartridge with *your* profile.
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Engine, post-processing, pack locator and the YOLOv8 graph are common code; the Android runtime binding lands with `IreeModuleRunner` |
 | Targets | `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`) |
-| Toolchain | SKaiNET 0.62.1 (Maven Central), Ultralytics 8.4.170 (convert only), IREE tools 3.11.0, SKaiNET-transformers runtime 0.63.1-SNAPSHOT (PR #513) |
+| Toolchain | SKaiNET 0.62.1 (Maven Central), Ultralytics 8.4.170 (convert only), IREE tools 3.11.0, SKaiNET-transformers runtime 0.63.1 (Maven Central) |
 
 ## What you will build
 

@@ -7,6 +7,7 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidMultiplatformLibrary)
+    alias(libs.plugins.vanniktech.mavenPublish)   // published: sk.ainet.cartridge.profiles:yolo-v1 (see publish.yml)
 }
 
 group = "sk.ainet.cartridge.profiles"

@@ -174,7 +174,7 @@
       "description": "IREE tools (StableHLO -> IREE): iree-compile with parameter export"
     },
     "iree-android-runtime": {
-      "version": "0.61.1",
+      "version": "0.63.1",
       "coordinates": "sk.ainet.transformers:skainet-transformers-runtime-iree-android",
       "description": "libskainet_iree_module.so + IreeModuleRunner (generic single-shot module runner), built and published by SKaiNET-transformers"
     },
