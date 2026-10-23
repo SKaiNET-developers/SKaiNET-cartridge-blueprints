@@ -2,6 +2,9 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.androidMultiplatformLibrary) apply false
     alias(libs.plugins.kotlinSerialization) apply false
+    // Declared once here so yolo-v1 and detection-yolov8-iree share one MavenCentralBuildService class;
+    // applied per module only, the two classloaders clash when both publish in one build.
+    alias(libs.plugins.vanniktech.mavenPublish) apply false
 }
 
 // Root aggregator. The materializer plugin is an included build (see settings.gradle.kts), so the

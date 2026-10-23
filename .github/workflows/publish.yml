@@ -63,6 +63,14 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_PRIVATE_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
 
+      # The Maven Local run never creates the Maven Central tasks; Gradle's --dry-run builds the
+      # tag's real task graph without executing anything, so a configuration error shows up here.
+      - name: Dry run — resolve the MavenCentral task graph (no upload)
+        if: github.event_name == 'workflow_dispatch'
+        run: >
+          ./gradlew :profiles:yolo-v1:publish :blueprints:detection-yolov8-iree:publish
+          --dry-run --no-configuration-cache --stacktrace
+
       - name: Dry run — summarize what would have been published
         if: github.event_name == 'workflow_dispatch'
         run: |
