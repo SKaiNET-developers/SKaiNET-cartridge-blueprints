@@ -35,3 +35,7 @@ include(":profiles:embedding-v1")
 include(":profiles:llm-v1")
 include(":profiles:yolo-v1")
 include(":blueprints:detection-yolov8-iree")
+// Hands-on demo app over that blueprint's packs. It builds without the packs; the APK bundles
+// whatever `materializeCartridge` has produced locally (AGPL weights never enter the repo).
+// The Compose demo graduated to SKaiNET-examples/VisionDemo.
+include(":apps:detection-yolov8-demo")

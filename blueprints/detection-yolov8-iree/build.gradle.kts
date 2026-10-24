@@ -107,6 +107,13 @@ tasks.withType<Test>().configureEach {
 val work = layout.buildDirectory.dir("blueprint/work")
 val selected = blueprint.target
 
+// The materialized graph's input size comes from the selected target's `input_size` param
+// (640 for the base targets, 320 for the speed variant — a different resolution is a different
+// pack, ADR-017). `-PinputSize=` is the HOST-side knob for convertOnnx/parityEager, so the ORT
+// reference runs at the size under test; it does not affect what a profile materializes.
+val graphSize = selected.map { it.params["input_size"] ?: "640" }
+val inputSize = providers.gradleProperty("inputSize").getOrElse("640")
+
 // convert — the PyTorch checkpoint → ONNX, in the pinned Ultralytics container. Only the initializers are used
 // downstream; the graph is the SKaiNET one in model/.
 val onnxVersion = "1.23.2"  // blueprint.json steps[convert].params.onnx
@@ -114,7 +121,7 @@ val convertOnnx = tasks.register<Exec>("convertOnnx") {
     group = "cartridge blueprint steps"
     description = "convert: yolov8n.pt -> yolov8n.onnx (Ultralytics exporter, pinned container)"
     val pt = blueprint.sourceFile("weights", "yolov8n.pt")
-    val outDir = work.map { it.dir("convert") }
+    val outDir = work.map { it.dir("convert/$inputSize") }
     inputs.file(pt).withPathSensitivity(PathSensitivity.NONE)
     outputs.file(outDir.map { it.file("yolov8n.onnx") })
     doFirst {
@@ -129,14 +136,14 @@ val convertOnnx = tasks.register<Exec>("convertOnnx") {
             addAll(listOf("-v", "${src.parentFile}:/in:ro", "-v", "${out}:/out", "-w", "/out", image))
             // The CPU image has no `onnx` module; the exporter needs it. Pinned, installed into the work dir only.
             addAll(listOf("sh", "-c", "set -e; pip install -q --no-cache-dir --target /out/.pydeps onnx==$onnxVersion; " +
-                "cp /in/${src.name} /out/yolov8n.pt; yolo export model=/out/yolov8n.pt format=onnx imgsz=640 opset=17 simplify=False; rm /out/yolov8n.pt"))
+                "cp /in/${src.name} /out/yolov8n.pt; yolo export model=/out/yolov8n.pt format=onnx imgsz=$inputSize opset=17 simplify=False; rm /out/yolov8n.pt"))
         })
     }
 }
 
 // export — ONNX initializers → the SKaiNET YoloV8 graph (in-graph DFL decode) → StableHLO, with this module's own
 // export compilation as the tool.
-val exportDir = work.map { it.dir("export") }
+val exportDir = work.zip(graphSize) { w, size -> w.dir("export/$size") }
 val exportCompilation = kotlin.jvm().compilations.getByName("export")
 val export = tasks.register<JavaExec>("exportStableHlo") {
     group = "cartridge blueprint steps"
@@ -151,7 +158,7 @@ val export = tasks.register<JavaExec>("exportStableHlo") {
     doFirst {
         environment("YOLO_ONNX", onnx.get().absolutePath)
         environment("YOLO_OUT", exportDir.get().file("yolov8n.mlir").asFile.absolutePath)
-        environment("YOLO_INPUT_SIZE", "640")   // blueprint.json attributes.input_resolution
+        environment("YOLO_INPUT_SIZE", graphSize.get())   // descriptor attributes.input_resolution
     }
 }
 
@@ -168,13 +175,13 @@ tasks.register<JavaExec>("parityEager") {
     val onnx = convertOnnx.map { it.outputs.files.singleFile }
     val parityDir = providers.gradleProperty("parityDir")
         .map { layout.projectDirectory.dir(it) }
-        .orElse(layout.buildDirectory.dir("parity").get())
+        .orElse(layout.buildDirectory.dir("parity/$inputSize").get())
     val image = providers.gradleProperty("image")
     doFirst {
         environment("YOLO_ONNX", onnx.get().absolutePath)
         environment("YOLO_IMAGE", image.orNull ?: error("pass -Pimage=<test image> (not committed; e.g. bus.jpg)"))
         environment("YOLO_WORK", parityDir.get().asFile.absolutePath)
-        environment("YOLO_INPUT_SIZE", "640")
+        environment("YOLO_INPUT_SIZE", inputSize)
     }
 }
 

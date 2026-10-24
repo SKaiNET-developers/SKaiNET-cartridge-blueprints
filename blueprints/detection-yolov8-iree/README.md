@@ -22,7 +22,7 @@ library**. You materialize it into a cartridge with *your* profile.
 | Weights license | **AGPL-3.0**, as Ultralytics publishes it (model card `license: agpl-3.0`, verified 2026-10-16; `pyproject.toml` `license = "AGPL-3.0"`, verified 2026-10-21). `redistribution: restricted` — see *Licensing* before you ship a cartridge |
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Engine, post-processing, pack locator and the YOLOv8 graph are common code; the Android runtime binding lands with `IreeModuleRunner` |
-| Targets | `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`) |
+| Targets | `vulkan-arm64`, `cpu-arm64`, `vulkan-arm64-320` (Android `arm64-v8a`; the 320 target is the speed variant — p50 69 ms vs 212 ms full pipeline on a Pixel 8a, one person fewer on the reference image) |
 | Toolchain | SKaiNET 0.62.1 (Maven Central), Ultralytics 8.4.170 (convert only), IREE tools 3.11.0, SKaiNET-transformers runtime 0.63.1 (Maven Central) |
 
 ## What you will build

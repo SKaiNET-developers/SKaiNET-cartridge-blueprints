@@ -69,6 +69,9 @@ data class Target(
     val target: JsonObject,
     val requirements: JsonObject? = null,
     val params: JsonObject? = null,
+    /** Deep-merged over the descriptor template for packs of this target — e.g. a variant target's
+     *  `attributes.input_resolution` (a different resolution is a different pack, ADR-017). */
+    @SerialName("descriptor_overrides") val descriptorOverrides: JsonObject? = null,
 )
 
 @Serializable
