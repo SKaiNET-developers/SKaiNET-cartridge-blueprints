@@ -423,6 +423,10 @@
         "params": {
           "type": "object",
           "description": "Target-specific parameters steps may read (compiler backend, GPU architecture, dtype)."
+        },
+        "descriptor_overrides": {
+          "type": "object",
+          "description": "Descriptor fields this target changes, deep-merged over the descriptor_template (objects merge key by key). For variant targets whose pack differs in declared attributes, e.g. attributes.input_resolution."
         }
       }
     },

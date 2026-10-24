@@ -99,7 +99,12 @@ class YoloV8CartridgeDeviceTest {
     /** Returns a failure line, or null when the pack passes. */
     private fun runPack(id: String, img: YoloImage): String? {
         // The pack, exactly as materialized: descriptor + manifest, then every artifact the manifest lists.
-        fetch("$id/descriptor.json") ?: return "$id: descriptor.json not served"
+        val descriptor = fetch("$id/descriptor.json") ?: return "$id: descriptor.json not served"
+        // The reference image's golden counts depend on the pack's resolution: at 640 ONNX Runtime
+        // finds 4 person + 1 bus, at 320 the smallest person drops below the confidence threshold
+        // (host parity at 320: 3 person + 1 bus, identical to ORT).
+        val resolution = JSONObject(descriptor.readText()).getJSONObject("attributes").optInt("input_resolution", 640)
+        val expected = mapOf("person" to if (resolution <= 320) 3 else 4, "bus" to 1)
         val manifest = fetch("$id/manifest.json") ?: return "$id: manifest.json not served"
         val artifacts = JSONObject(manifest.readText()).getJSONArray("artifacts")
         for (i in 0 until artifacts.length()) {
@@ -137,8 +142,8 @@ class YoloV8CartridgeDeviceTest {
                         .format(createMs, times.first(), pct(0.5), pct(0.95), Debug.getPss() / 1024),
             )
             if (!inBounds) return "$id: a box lies outside the ${img.width}x${img.height} source image"
-            return if (counts == mapOf("person" to 4, "bus" to 1)) null
-            else "$id: expected {person=4, bus=1}, got $counts"
+            return if (counts == expected) null
+            else "$id: expected $expected, got $counts"
         }
     }
 }

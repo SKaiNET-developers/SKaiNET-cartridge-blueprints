@@ -57,6 +57,9 @@ object DescriptorResolver {
         fields["license"] = JsonPrimitive(effectiveLicense)
         fields["target"] = target.target
         target.requirements?.let { fields["requirements"] = it }
+        // A variant target's descriptor deltas (deep-merged, so attributes merge key by key); the
+        // profile's overrides below still have the last word.
+        target.descriptorOverrides?.forEach { (k, v) -> fields[k] = deepMerge(fields[k], v) }
         fields["performance"] = performance
         // The descriptor schema requires `quality`. Unmeasured is a legitimate, explicit state (the spec's honesty
         // rule) — what is never legitimate is a number that was not measured on these artifacts.

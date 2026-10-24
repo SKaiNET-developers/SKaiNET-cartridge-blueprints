@@ -202,7 +202,35 @@
       "params": {
         "backend": "vulkan",
         "iree_target": "valhall4",
-        "device": "vulkan"
+        "device": "vulkan",
+        "input_size": "640"
+      }
+    },
+    {
+      "id": "vulkan-arm64-320",
+      "target": {
+        "hardware": "IREE-arm64-v8a",
+        "abi": "arm64-v8a",
+        "accelerator": "Vulkan GPU (valhall4)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 384,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "vulkan",
+        "iree_target": "valhall4",
+        "device": "vulkan",
+        "input_size": "320"
+      },
+      "descriptor_overrides": {
+        "attributes": {
+          "input_resolution": 320
+        }
       }
     },
     {
@@ -222,7 +250,8 @@
       "params": {
         "backend": "cpu",
         "iree_target": "arm64",
-        "device": "local-task"
+        "device": "local-task",
+        "input_size": "640"
       }
     }
   ],
