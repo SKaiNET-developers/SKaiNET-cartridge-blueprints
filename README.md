@@ -1,5 +1,9 @@
 # SKaiNET cartridge blueprints
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Maven Central](https://img.shields.io/maven-central/v/sk.ainet.cartridge/detection-yolov8-iree.svg)](https://central.sonatype.com/artifact/sk.ainet.cartridge/detection-yolov8-iree)
+[![REUSE status](https://api.reuse.software/badge/github.com/SKaiNET-developers/SKaiNET-cartridge-blueprints)](https://api.reuse.software/info/github.com/SKaiNET-developers/SKaiNET-cartridge-blueprints)
+
 Open-source **blueprints** for [SKaiNET cartridges](https://github.com/SKaiNET-developers/SKaiNET-cartridge),
 and the reference **materializer** that turns a blueprint into a cartridge.
 
@@ -8,10 +12,23 @@ artifacts, capability descriptor, signed manifest. A **blueprint** is everything
 API and runtime *source*, a descriptor template and a machine-readable recipe — **without** the model
 weights and without compiled binaries. Turning a blueprint into a cartridge is *materialization*:
 
-```
-blueprint ─► fetch ─► convert ─► quantize ─► export StableHLO ─► compile (IREE tools) ─► pack + sign ─► cartridge
-   +          weights   Kotlin     Kotlin      Kotlin              StableHLO → IREE        descriptor + manifest
- profile      from their publisher, pinned by revision + SHA-256, under terms YOU accept
+```mermaid
+flowchart LR
+    blueprint["blueprint<br/>recipe + source"]
+    profile["your profile<br/>target, measurements,<br/>license acceptance"]
+    subgraph materialize ["./gradlew materializeCartridge — on your machine"]
+        direction LR
+        fetch["fetch<br/>weights, pinned by<br/>revision + SHA-256"]
+        convert["convert<br/>Kotlin"]
+        quantize["quantize<br/>Kotlin"]
+        export["export<br/>StableHLO"]
+        compile["compile<br/>IREE tools"]
+        pack["pack + sign<br/>descriptor + manifest"]
+    end
+    cartridge["cartridge<br/>graphs + params<br/>+ native runtime"]
+    blueprint --> fetch
+    profile -- "license gate: terms are YOURS to accept,<br/>never accepted for you" --> fetch
+    fetch --> convert --> quantize --> export --> compile --> pack --> cartridge
 ```
 
 Normative text: [Blueprints](https://skainet-developers.github.io/SKaiNET-cartridge/skainet-cartridge/blueprints.html)
@@ -25,9 +42,17 @@ Normative text: [Blueprints](https://skainet-developers.github.io/SKaiNET-cartri
 | [`blueprints/nlu-functiongemma-270m-iree/`](blueprints/nlu-functiongemma-270m-iree/) | Function-calling NLU, FunctionGemma 270M — Kotlin Multiplatform API (runtime binding: Android), recipe, step-by-step guide (weights: Gemma Terms of Use, acceptance required) | recipe verified step by step; end-to-end materialization needs your license acceptance |
 | [`blueprints/asr-moonshine-v2-streaming-iree/`](blueprints/asr-moonshine-v2-streaming-iree/) | Streaming speech-to-text, Moonshine v2 tiny en + de — Kotlin Multiplatform API (runtime binding: Android), recipe, step-by-step guide (weights: MIT) | German flavor materialized end to end, signed, verified on a device against the previous build |
 | [`blueprints/nlu-qwen-iree/`](blueprints/nlu-qwen-iree/) | Function-calling NLU, Qwen instruct models, one flavor per checkpoint (today: Qwen3-0.6B) — Kotlin Multiplatform API (runtime binding: Android), recipe, step-by-step guide (weights: Apache-2.0) | recipe runs on the host; compiled graphs match llama.cpp token for token on host IREE; not yet run on a device |
-| [`blueprints/detection-yolov8-iree/`](blueprints/detection-yolov8-iree/) | Single-shot object detection, YOLOv8n (COCO, 80 classes) — Kotlin Multiplatform API implementing the `yolo/v1` task profile, the YOLOv8 graph in the SKaiNET DSL, recipe (weights: AGPL-3.0, `restricted`) | API and post-processing tested on the host; fetch + convert run; export, runtime and device verification pending |
-| [`profiles/yolo-v1/`](profiles/yolo-v1/) | The `yolo/v1` task-profile contract (copy of the spec's normative types until they are published) | working |
+| [`blueprints/detection-yolov8-iree/`](blueprints/detection-yolov8-iree/) | Single-shot object detection, YOLOv8n (COCO, 80 classes) — Kotlin Multiplatform API implementing the `yolo/v1` task profile, the YOLOv8 graph in the SKaiNET DSL, recipe (weights: AGPL-3.0, `restricted`) | materialized end to end, signed; verified on a device (Pixel 8a, Vulkan, 320/640); consumer library on Maven Central |
+| [`profiles/yolo-v1/`](profiles/yolo-v1/) | The `yolo/v1` task-profile contract (copy of the spec's normative types until they are published) | working, on Maven Central |
 | `docs/` | Model-specific guides: download, convert, quantize, compile | planned |
+
+Two modules are published to [Maven Central](https://central.sonatype.com/namespace/sk.ainet.cartridge) —
+code only: packs are materialized locally from the blueprint, weights never ship:
+
+```kotlin
+implementation("sk.ainet.cartridge.profiles:yolo-v1:0.2.2")      // the yolo/v1 contract alone
+implementation("sk.ainet.cartridge:detection-yolov8-iree:0.2.2") // the blueprint's consumer library
+```
 
 ## The materializer
 
