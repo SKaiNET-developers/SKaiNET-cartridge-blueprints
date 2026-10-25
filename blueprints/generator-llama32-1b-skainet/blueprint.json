@@ -81,9 +81,9 @@
       "description": "transformers-core (OptimizedLLMRuntime, generateUntilStop, TokenizerFactory, DecoderGgufWeightLoader) and inference-llama (llama network DSL, GGUF weight mapping)"
     },
     "skainet": {
-      "version": "0.62.2",
+      "version": "0.62.3",
       "coordinates": "sk.ainet:skainet-bom",
-      "description": "CPU backend, streaming GGUF loader, random-access file sources; >= 0.62.1 required for the multi-row quantized kernel fix (SKaiNET#1436)"
+      "description": "CPU backend, streaming GGUF loader, random-access file sources; >= 0.62.1 required for the multi-row quantized kernel fix (SKaiNET#1436); 0.62.3 buffers GGUF metadata parsing and builds the tokenizer in one pass (faster open())"
     },
     "llm-v1": {
       "version": "0.1.0",

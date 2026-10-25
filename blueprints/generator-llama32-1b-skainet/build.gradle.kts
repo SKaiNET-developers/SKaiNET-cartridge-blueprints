@@ -44,7 +44,7 @@ kotlin {
             // Engine deliberately ahead of the transformers BOM's 0.62.0 pin: 0.62.1 fixed
             // SKaiNET#1436 (multi-row Q8_0/Q4_0/Q5_x native kernels zeroed every output row
             // but the last) — this blueprint's whole point is the packed-quant GGUF path.
-            implementation(project.dependencies.platform("sk.ainet:skainet-bom:0.62.2"))
+            implementation(project.dependencies.platform("sk.ainet:skainet-bom:0.62.3"))
             implementation("sk.ainet.core:skainet-lang-core")
             implementation("sk.ainet.core:skainet-backend-api")
             implementation("sk.ainet.core:skainet-backend-cpu")
