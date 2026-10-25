@@ -55,6 +55,10 @@ class Llama32GenerationSmokeTest {
             assertEquals(LlmFinishReason.STOP, first.finishReason, "greedy decode must hit a stop token")
             assertTrue(first.text.isNotBlank(), "generated text must not be empty")
             assertEquals(first.tokens, second.tokens, "greedy decode must be deterministic")
+            // Golden: the pinned checkpoint's greedy answer to this fixed conversation,
+            // captured on JVM (jdk.incubator.vector) — greedy argmax admits no tolerance
+            // budget, so any drift is a real behavioral change, not noise.
+            assertEquals("Die Wetterlage ist heute schön.", first.text, "greedy golden drifted")
             println("greedy output: ${first.text}")
         } finally {
             engine.close()
