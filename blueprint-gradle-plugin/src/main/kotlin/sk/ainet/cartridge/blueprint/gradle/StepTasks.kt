@@ -19,6 +19,7 @@ import sk.ainet.cartridge.blueprint.steps.Conv1dIm2colRewrite
 import sk.ainet.cartridge.blueprint.steps.HostGatherRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8ParametersRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8WeightsRewrite
+import sk.ainet.cartridge.blueprint.steps.TorqBf16Rewrite
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
@@ -96,6 +97,26 @@ abstract class Int8ParametersTask : DefaultTask() {
 }
 
 /**
+ * `convert`: the whole graph in bf16 for the Synaptics Torq NPU (see [TorqBf16Rewrite]). Compile the output with
+ * `backend = "torq"`, which adds [TorqBf16Rewrite.COMPILE_FLAGS].
+ */
+@CacheableTask
+abstract class TorqBf16Task : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
+    @get:OutputFile abstract val output: RegularFileProperty
+
+    @TaskAction
+    fun run() = materializing {
+        val result = TorqBf16Rewrite.rewrite(input.get().asFile.readText())
+        output.get().asFile.apply { parentFile.mkdirs() }.writeText(result.mlir)
+        logger.lifecycle(
+            "torq-bf16: ${result.weightMatmuls} weight matmuls and ${result.sumsAsMatmuls} sums as bf16 matmuls, " +
+                "${result.barriers} barriers in ${output.get().asFile.name}",
+        )
+    }
+}
+
+/**
  * Runs one IREE tools command (StableHLO → IREE) in the pinned container image. Input and output directories are
  * mounted separately, the input read-only; the container runs as the invoking user so outputs are not root-owned.
  */
@@ -141,7 +162,9 @@ abstract class IreeToolsTask @Inject constructor(private val exec: ExecOperation
 /**
  * `compile`: StableHLO module → `.vmfb`.
  * `backend = "vulkan"` ⇒ `iree-compile --iree-hal-target-backends=vulkan-spirv --iree-vulkan-target=<target>`;
- * `backend = "cpu"` ⇒ `iree-compile --iree-hal-target-backends=llvm-cpu` for `target` = `host` | `arm32` | `arm64`.
+ * `backend = "cpu"` ⇒ `iree-compile --iree-hal-target-backends=llvm-cpu` for `target` = `host` | `arm32` | `arm64`;
+ * `backend = "torq"` ⇒ the Torq-fork image's `compile-torq` for `target` = the Torq hardware (`SL2610`), with
+ * [TorqBf16Rewrite.COMPILE_FLAGS] — for modules from [TorqBf16Task].
  */
 abstract class IreeCompileTask @Inject constructor(exec: ExecOperations) : IreeToolsTask(exec) {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
@@ -160,8 +183,15 @@ abstract class IreeCompileTask @Inject constructor(exec: ExecOperations) : IreeT
     @TaskAction
     fun run() {
         val be = backend.get()
-        if (be != "vulkan" && be != "cpu") throw GradleException("IreeCompileTask.backend must be 'vulkan' or 'cpu', got '$be'")
+        if (be != "vulkan" && be != "cpu" && be != "torq") throw GradleException("IreeCompileTask.backend must be 'vulkan', 'cpu' or 'torq', got '$be'")
         val scope = parameterScope.orNull
+        if (be == "torq") {
+            if (scope != null) throw GradleException("IreeCompileTask: backend = torq does not take a parameter archive")
+            runInContainer(input.get().asFile, output.get().asFile, entrypoint = null) { i, o ->
+                listOf("compile-torq", i, "--out", o, "--target", target.get(), "--") + TorqBf16Rewrite.COMPILE_FLAGS + extraArgs.getOrElse(emptyList())
+            }
+            return
+        }
         if (scope == null) {
             runInContainer(input.get().asFile, output.get().asFile, entrypoint = null) { i, o ->
                 listOf(if (be == "vulkan") "compile-vulkan" else "compile-cpu", i, "--out", o, "--target", target.get()) + extraArgs.getOrElse(emptyList())
