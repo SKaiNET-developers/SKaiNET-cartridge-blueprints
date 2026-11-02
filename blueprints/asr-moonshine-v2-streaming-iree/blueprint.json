@@ -246,6 +246,36 @@
         "conv1d_im2col": "true",
         "int8_weights": "encoder,adapter,prefill,with_past"
       }
+    },
+    {
+      "id": "torq-sl26xx",
+      "target": {
+        "hardware": "IREE-linux-aarch64 (Synaptics SL26xx, Cortex-A55 + Torq NPU)",
+        "abi": "linux-aarch64",
+        "accelerator": "Synaptics Torq NPU (SL2610)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 1900,
+        "driver": {
+          "name": "Torq-fork IREE runtime",
+          "min_version": ">=2.3.0 <2.4",
+          "note": "modules come from the Torq 2.3.0 compiler; the app links the matching runtime (torq driver for the encoder, local-task for the rest)"
+        },
+        "os": {
+          "name": "linux"
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "linux-arm64",
+        "device": "local-task",
+        "toolchain": "iree-tools-torq",
+        "conv1d_im2col": "true",
+        "int8_weights": "adapter,prefill,with_past",
+        "npu_graphs": "encoder",
+        "torq_hw": "SL2610"
+      }
     }
   ],
   "flavors": [
@@ -406,6 +436,20 @@
       "description": "Only for the graphs a target lists in params.int8_weights: every rank-2 f32 constant with at least 16384 elements becomes int8 with one symmetric scale per row, dequantized in the graph; vectors and higher-rank constants (masks, bands) stay f32. The compile step then reads the rewritten graph and runs with const-expr hoisting and const-eval off, so the weights stay int8 (inline in the .vmfb; int8 decoder graphs read no parameter archive, and the pack ships none). On a Cortex-A55 (cpu-sl26xx): RTF 1.48 -> 0.95 paced, finals identical on 16 test clips. The frontend stays f32 (int8 measured no faster)."
     },
     {
+      "id": "torq-bf16",
+      "kind": "convert",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "en-encoder-mlir",
+        "de-encoder-mlir"
+      ],
+      "produces": [
+        "en-encoder-torq-bf16-mlir",
+        "de-encoder-torq-bf16-mlir"
+      ],
+      "description": "Only for the graphs a target lists in params.npu_graphs (torq-sl26xx: the encoder): the whole graph in bf16 for the Synaptics Torq NPU, inputs and outputs stay f32. Weight matmuls read pre-transposed bf16 constants (Torq asserts on transposed-B bf16 matmuls), sum reductions become matmuls with an all-ones matrix (Torq gets the small row vectors between a reduce and its broadcast wrong), and optimization barriers keep IREE from fusing anything into a matmul or a transpose (Torq drops ops fused there). The compile step then runs the Torq backend (compile-torq --torq-hw=<params.torq_hw>) with --torq-disable-css --iree-scheduling-optimize-bindings=false --iree-flow-inline-constants-max-byte-length=4194304. On an SL2610 with Torq 2.3.0 (en): cosine 0.9995 against the f32 encoder, finals identical on 12 golden clips, streaming RTF 0.77 -> 0.74 against cpu-sl26xx."
+    },
+    {
       "id": "compile",
       "kind": "compile",
       "tool": "iree-tools",
@@ -437,7 +481,7 @@
         "en-frontend-step-vmfb",
         "de-frontend-step-vmfb"
       ],
-      "description": "StableHLO -> .vmfb for the target: frontend, frontend_step, encoder, adapter with weights embedded; prefill and step referencing the parameter archive under scope `model`. Runs once per selected flavor.",
+      "description": "StableHLO -> .vmfb for the target: frontend, frontend_step, encoder, adapter with weights embedded; prefill and step referencing the parameter archive under scope `model`. Runs once per selected flavor. Graphs in params.npu_graphs compile for the Torq NPU from the torq-bf16 output.",
       "per_target": true
     },
     {

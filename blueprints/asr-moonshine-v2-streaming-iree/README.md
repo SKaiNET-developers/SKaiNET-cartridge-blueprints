@@ -16,7 +16,7 @@ materialize it into a cartridge with *your* profile.
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, pack locator and language selection are common code; a **runtime binding exists for Android** (see *Platforms*) |
 | Flavors | `en`, `de` — one language per flavor; a profile selects one or both |
-| Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`); `cpu-sl26xx` (Linux aarch64, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules) |
+| Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`); `cpu-sl26xx` (Linux aarch64, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules); `torq-sl26xx` (the same, with the encoder on the Torq NPU) |
 | Toolchain | SKaiNET 0.61.0, SKaiNET-transformers 0.62.2 (exporter), 0.63.1 (runtime: incremental frontend), IREE tools 3.11.0 |
 
 ## What you will build
@@ -98,7 +98,7 @@ Vulkan: `iree-compile --iree-hal-target-backends=vulkan-spirv --iree-vulkan-targ
 --iree-llvmcpu-target-cpu-features=+neon --iree-llvmcpu-link-embedded=false --iree-llvmcpu-link-static=false
 --iree-llvmcpu-stack-allocation-limit=1048576` (with a clang linker wrapper for the Android triple).
 
-Two `convert` rewrites run before the compile when the target asks for them:
+Three `convert` rewrites run before the compile when the target asks for them:
 
 - `params.conv1d_im2col = "true"`: the frontend's two strided 1-D convolutions as im2col + one matmul each, same
   arithmetic (`im2colFrontend<Lang>`).
@@ -108,8 +108,17 @@ Two `convert` rewrites run before the compile when the target asks for them:
   int8 inside the `.vmfb`. When both decoder graphs are listed they read no parameter archive, so the archive is
   neither compiled against nor packed (86 MB less for the English flavor).
 
-`cpu-sl26xx` sets both. On its Cortex-A55 the int8 weights take the streaming real-time factor from 1.48 to 0.95,
-with identical finals on 16 test clips.
+- `params.npu_graphs = "encoder"` (the graphs to run on the Torq NPU, not also in `int8_weights`): the whole graph in
+  bf16, shaped around what Torq 2.3.0 gets right (`torqBf16<Lang><Graph>`): weight matmuls on pre-transposed bf16
+  constants, sum reductions as matmuls with an all-ones matrix, optimization barriers after every matmul and
+  transpose. Those graphs compile with the image's `compile-torq --target <params.torq_hw>` and
+  `--torq-disable-css --iree-scheduling-optimize-bindings=false --iree-flow-inline-constants-max-byte-length=4194304`.
+
+`cpu-sl26xx` sets the first two. On its Cortex-A55 the int8 weights take the streaming real-time factor from 1.48 to
+0.95, with identical finals on 16 test clips. `torq-sl26xx` moves the encoder to the NPU (`npu_graphs = "encoder"`,
+int8 for the other three): on an SL2610 with Torq 2.3.0 the encoder matches its f32 graph at cosine 0.9995, finals are
+identical on 12 test clips, and the real-time factor goes from 0.77 (`cpu-sl26xx`) to 0.74. The pack's descriptor has
+to place the encoder on the `torq` device.
 
 ## Step 6 — Runtime, measure, pack, sign
 
