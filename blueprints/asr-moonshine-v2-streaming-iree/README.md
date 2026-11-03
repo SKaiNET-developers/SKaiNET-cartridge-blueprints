@@ -16,7 +16,7 @@ materialize it into a cartridge with *your* profile.
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, pack locator and language selection are common code; a **runtime binding exists for Android** (see *Platforms*) |
 | Flavors | `en`, `de` — one language per flavor; a profile selects one or both |
-| Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`); `cpu-sl26xx` (Linux aarch64, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules); `torq-sl26xx` (the same, with the frontend and the encoder on the Torq NPU); `torq-sl26xx-encoder-cpu` (only the frontend on the NPU, the encoder int8 × int8 on the CPU) |
+| Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`); `cpu-sl26xx` (Linux aarch64, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules); `torq-sl26xx` (the same, with the encoder on the Torq NPU); `sl26xx-cpu-int8` (the same graphs as `torq-sl26xx`, all on the CPU, the encoder int8 × int8) |
 | Toolchain | SKaiNET 0.61.0, SKaiNET-transformers 0.62.2 (exporter), 0.63.1 (runtime: incremental frontend), IREE tools 3.11.0 |
 
 ## What you will build
@@ -113,6 +113,9 @@ Three `convert` rewrites run before the compile when the target asks for them:
   dot-product ukernel. They compile with `--iree-global-opt-data-tiling --iree-llvmcpu-enable-ukernels=all` instead,
   which packs the int8 weights at compile time. The activation rounding changes the numerics a little: check the
   transcripts per graph.
+- `params.data_tiling = "frontend,frontend_step"` (f32 CPU graphs, not also in `npu_graphs`): compiled with the same
+  data tiling and ukernels, unquantized. List `frontend_step` (here or in `npu_graphs`, wherever `frontend` runs) for
+  the runtime's incremental frontend; a stage script packs it only then.
 
 - `params.npu_graphs = "frontend,encoder"` (the graphs to run on the Torq NPU, not also in `int8_weights`): the whole graph in
   bf16, shaped around what Torq 2.3.0 gets right (`torqBf16<Lang><Graph>`): weight matmuls on pre-transposed bf16
@@ -142,13 +145,19 @@ after the last sample (was ~580 ms). `int8_activations = "with_past"` then takes
 (finals identical on the 12 test clips): real-time factor 0.35, final ~360 ms after the last sample. With prefill in
 the list as well, 2 of the 12 finals changed, so it stays weight-only.
 
-`torq-sl26xx-encoder-cpu` is the same pack with the encoder (and the cross-K/V function in its module) back on the
-CPU, int8 × int8 (`npu_graphs = "frontend"`, `int8_activations = "encoder,with_past"`). On the NPU the encoder is
-dominated by per-dispatch runtime work and host-fallback transposes (137 ms per 64-frame call); on the A55 with the
-dot-product ukernel it takes 42 ms. The real-time factor goes from 0.36 to 0.25 and the final arrives ~280 ms after
-the last sample (was ~370 ms), but the encoder is less exact (cosine 0.9987 against its f32 graph, NPU bf16:
-0.9996): 11 of the 12 finals are identical, the 12th has different (fewer) word errors. Both are kept so they can be
-compared on more audio.
+`data_tiling = "frontend,frontend_step"` (f32 CPU graphs compiled with data tiling and the ukernels, which takes the
+frontend from 183 to 43 ms per window, exact) puts the frontend back on the CPU, together with the incremental
+frontend: the runtime finds `frontend_step.vmfb` next to `frontend.vmfb` and runs 16 + 4 frames as the audio arrives
+(12 ms per call; on the NPU a call takes 21 ms, more than the whole-window frontend per frame). A window then only
+computes the frames past the fed audio. On `torq-sl26xx` (encoder on the NPU): finals identical on the 12 test clips,
+final ~330 ms after the last sample (was ~360 ms), real-time factor 0.35.
+
+`sl26xx-cpu-int8` runs everything on the CPU: the same graphs as `torq-sl26xx`, with the encoder (and the cross-K/V
+function in its module) int8 × int8 (`int8_activations = "encoder,with_past"`). On the NPU the encoder is dominated by
+per-dispatch runtime work and host-fallback transposes (137 ms per 64-frame call); on the A55 with the dot-product
+ukernel it takes 42 ms. The real-time factor is 0.24 and the final arrives ~230 ms after the last sample, but the
+encoder is less exact (cosine 0.9987 against its f32 graph, NPU bf16: 0.9996): 11 of the 12 finals are identical,
+the 12th has different (fewer) word errors. Both targets are kept so they can be compared on more audio.
 
 ## Step 6 — Runtime, measure, pack, sign
 

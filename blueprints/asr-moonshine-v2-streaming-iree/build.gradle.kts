@@ -173,6 +173,8 @@ for ((language, source) in flavors) {
     val int8Graphs = selected.map { t -> t.params["int8_weights"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
     // graphs among them whose weight matmuls also quantize their activations (params.int8_activations = "with_past")
     val int8ActGraphs = selected.map { t -> t.params["int8_activations"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
+    // f32 CPU graphs compiled with data tiling and the ukernels (params.data_tiling = "frontend,frontend_step")
+    val dataTilingGraphs = selected.map { t -> t.params["data_tiling"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
     // graphs that run on the Torq NPU (params.npu_graphs = "encoder"): whole graph in bf16, compiled for Torq
     val npuGraphs = selected.map { t -> t.params["npu_graphs"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
 
@@ -219,6 +221,10 @@ for ((language, source) in flavors) {
             if (graph in npu && graph in int8) throw GradleException("$graph is in both params.npu_graphs and params.int8_weights")
             graph in npu
         }
+        val useDataTiling = dataTilingGraphs.zip(npuGraphs) { dt, npu ->
+            if (graph in dt && graph in npu) throw GradleException("$graph is in both params.data_tiling and params.npu_graphs")
+            graph in dt
+        }
 
         // A target may name its own compiler (params.toolchain): SL26xx boards need the Torq-fork compiler.
         val compile = tasks.register<IreeCompileTask>("compile$lang$g") {
@@ -227,8 +233,11 @@ for ((language, source) in flavors) {
             dependsOn(export, sourceTasks, useInt8.map { if (it) listOf(int8) else emptyList() }, onNpu.map { if (it) listOf(torqBf16) else emptyList() })
             input.set(onNpu.flatMap { npu -> if (npu) torqBf16.flatMap { t -> t.output } else useInt8.flatMap { if (it) int8.flatMap { t -> t.output } else source } })
             // weight-only int8: without hoisting and const-eval, so the dequantization is not folded back into f32
-            // constants; int8 x int8: data tiling and ukernels, the int8 weights packed at compile time
-            extraArgs.set(useInt8.zip(useInt8Act) { int8, act -> if (act) Int8MatmulRewrite.COMPILE_FLAGS else if (int8) Int8WeightsRewrite.COMPILE_FLAGS else emptyList() })
+            // constants; int8 x int8 and data_tiling: data tiling and ukernels, the weights packed at compile time
+            extraArgs.set(useInt8.zip(useInt8Act) { int8, act -> int8 to act }.zip(useDataTiling) { (int8, act), dt ->
+                if (int8 && !act && dt) throw GradleException("$graph is in params.data_tiling but weight-only int8: list it in int8_activations")
+                if (act || dt) Int8MatmulRewrite.COMPILE_FLAGS else if (int8) Int8WeightsRewrite.COMPILE_FLAGS else emptyList()
+            })
             backend.set(onNpu.flatMap { if (it) provider { "torq" } else selected.map { t -> t.param("backend") } })
             target.set(onNpu.flatMap { if (it) selected.map { t -> t.params["torq_hw"] ?: "SL2610" } else selected.map { t -> t.param("iree_target") } })
             // f32 decoder graphs read their weights from the archive; int8 ones carry them inline
