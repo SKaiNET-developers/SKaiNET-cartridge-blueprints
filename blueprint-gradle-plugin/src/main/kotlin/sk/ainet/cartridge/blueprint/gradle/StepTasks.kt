@@ -22,6 +22,7 @@ import sk.ainet.cartridge.blueprint.steps.Int8MatmulRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8ParametersRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8WeightsRewrite
 import sk.ainet.cartridge.blueprint.steps.TorqBf16Rewrite
+import sk.ainet.cartridge.blueprint.steps.TorqTosaRewrite
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
@@ -128,6 +129,34 @@ abstract class TorqBf16Task : DefaultTask() {
 }
 
 /**
+ * `convert`: StableHLO → TOSA for the Torq NPU's single-dispatch route ([TorqTosaRewrite]): the divide pre-pass, then
+ * StableHLO's own TOSA legalization (`stablehlo-opt` in [image], the `stablehlo-tosa` toolchain image), then the
+ * translation of what it leaves. Compile the output with `backend = "torq-tosa"`.
+ */
+@CacheableTask
+abstract class TorqTosaTask @Inject constructor(exec: ExecOperations) : IreeToolsTask(exec) {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
+    @get:OutputFile abstract val output: RegularFileProperty
+
+    @TaskAction
+    fun run() = materializing {
+        val out = output.get().asFile.apply { parentFile.mkdirs() }
+        val prep = File(out.parentFile, ".${out.nameWithoutExtension}.prep.mlir")
+        val raw = File(out.parentFile, ".${out.nameWithoutExtension}.legalized.mlir")
+        val (prepared, divides) = TorqTosaRewrite.prepareDivides(input.get().asFile.readText())
+        prep.writeText(prepared)
+        runInContainer(prep, raw, entrypoint = "stablehlo-opt") { i, o -> listOf(i) + TorqTosaRewrite.LEGALIZE_ARGS + listOf("-o", o) }
+        val r = TorqTosaRewrite.finish(raw.readText())
+        out.writeText(r.mlir)
+        prep.delete(); raw.delete()
+        logger.lifecycle(
+            "torq-tosa: $divides divides by a broadcast rewritten; ${r.broadcasts} broadcasts (${r.tiled} tiled), " +
+                "${r.weightMatmuls} weight and ${r.batchedMatmuls} batched matmuls, ${r.roots} roots translated in ${out.name}",
+        )
+    }
+}
+
+/**
  * `convert` for targets with `params.cross_kv_cache = "true"`: the prefill takes the cross-attention K/V instead of the
  * memory, and the encoder module gets one matmul that computes them for a window of adapter rows ([CrossKvCacheRewrite]).
  */
@@ -199,7 +228,9 @@ abstract class IreeToolsTask @Inject constructor(private val exec: ExecOperation
  * `backend = "vulkan"` ⇒ `iree-compile --iree-hal-target-backends=vulkan-spirv --iree-vulkan-target=<target>`;
  * `backend = "cpu"` ⇒ `iree-compile --iree-hal-target-backends=llvm-cpu` for `target` = `host` | `arm32` | `arm64`;
  * `backend = "torq"` ⇒ the Torq-fork image's `compile-torq` for `target` = the Torq hardware (`SL2610`), with
- * [TorqBf16Rewrite.COMPILE_FLAGS] — for modules from [TorqBf16Task].
+ * [TorqBf16Rewrite.COMPILE_FLAGS] — for modules from [TorqBf16Task];
+ * `backend = "torq-tosa"` ⇒ the same with `--input tosa-torq` and [TorqTosaRewrite.COMPILE_FLAGS] — for TOSA modules
+ * from [TorqTosaTask], one dispatch per function.
  */
 abstract class IreeCompileTask @Inject constructor(exec: ExecOperations) : IreeToolsTask(exec) {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
@@ -218,12 +249,13 @@ abstract class IreeCompileTask @Inject constructor(exec: ExecOperations) : IreeT
     @TaskAction
     fun run() {
         val be = backend.get()
-        if (be != "vulkan" && be != "cpu" && be != "torq") throw GradleException("IreeCompileTask.backend must be 'vulkan', 'cpu' or 'torq', got '$be'")
+        if (be !in listOf("vulkan", "cpu", "torq", "torq-tosa")) throw GradleException("IreeCompileTask.backend must be 'vulkan', 'cpu', 'torq' or 'torq-tosa', got '$be'")
         val scope = parameterScope.orNull
-        if (be == "torq") {
-            if (scope != null) throw GradleException("IreeCompileTask: backend = torq does not take a parameter archive")
+        if (be == "torq" || be == "torq-tosa") {
+            if (scope != null) throw GradleException("IreeCompileTask: backend = $be does not take a parameter archive")
             runInContainer(input.get().asFile, output.get().asFile, entrypoint = null) { i, o ->
-                listOf("compile-torq", i, "--out", o, "--target", target.get(), "--") + TorqBf16Rewrite.COMPILE_FLAGS + extraArgs.getOrElse(emptyList())
+                val (input, flags) = if (be == "torq") listOf<String>() to TorqBf16Rewrite.COMPILE_FLAGS else listOf("--input", "tosa-torq") to TorqTosaRewrite.COMPILE_FLAGS
+                listOf("compile-torq", i, "--out", o, "--target", target.get()) + input + listOf("--") + flags + extraArgs.getOrElse(emptyList())
             }
             return
         }

@@ -127,6 +127,11 @@
       "image": "skainet/iree-compiler-torq:2.3.0",
       "description": "Synaptics Torq-fork iree-compile (SKaiNET-embedded-vendors synaptics-torq/docker) for SL26xx boards: their runtime rejects upstream-IREE modules, so targets with params.toolchain = iree-tools-torq compile here; parameters still come from iree-tools (shared .irpa format)"
     },
+    "stablehlo-tosa": {
+      "version": "2.3.0",
+      "image": "skainet/stablehlo-tosa:2.3.0",
+      "description": "stablehlo-opt with StableHLO's TOSA legalization (--stablehlo-prepare-for-tosa --stablehlo-legalize-to-tosa), built from the Torq 2.3.0 compiler's LLVM (SKaiNET-embedded-vendors synaptics-torq/stablehlo-tosa), for graphs in params.tosa_graphs"
+    },
     "iree-android-runtime": {
       "version": "0.63.1",
       "coordinates": "sk.ainet.transformers:skainet-transformers-runtime-iree-android",
@@ -274,6 +279,7 @@
         "conv1d_im2col": "true",
         "int8_weights": "adapter,prefill,with_past",
         "npu_graphs": "encoder",
+        "tosa_graphs": "encoder",
         "data_tiling": "frontend,frontend_step",
         "cross_kv_cache": "true",
         "int8_activations": "with_past",
@@ -481,6 +487,20 @@
         "de-encoder-torq-bf16-mlir"
       ],
       "description": "Only for the graphs a target lists in params.npu_graphs (torq-sl26xx: the frontend and the encoder): the whole graph in bf16 for the Synaptics Torq NPU, inputs and outputs stay f32. Weight matmuls read pre-transposed bf16 constants (Torq asserts on transposed-B bf16 matmuls), an im2col conv weight its folded [out, k*in] bf16 matrix, sum reductions become matmuls with an all-ones matrix (Torq gets the small row vectors between a reduce and its broadcast wrong), and optimization barriers keep IREE from fusing anything into a matmul, a transpose or a strided slice (Torq drops ops fused there, or fails on them). A barrier also follows every elementwise op that feeds another one or a transpose: Torq runs an elementwise dispatch on the NPU only when it holds a single op, fused chains run on the host. The compile step then runs the Torq backend (compile-torq --torq-hw=<params.torq_hw>) with --torq-disable-css --iree-scheduling-optimize-bindings=false --iree-flow-inline-constants-max-byte-length=4194304. On an SL2610 with Torq 2.3.0 (en): cosine 0.99996 (frontend) and 0.9995 (encoder) against the f32 graphs, finals identical on 12 golden clips, streaming RTF 0.77 -> 0.57 against cpu-sl26xx (0.71 with only the encoder on the NPU)."
+    },
+    {
+      "id": "torq-tosa",
+      "kind": "convert",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "en-encoder-mlir",
+        "de-encoder-mlir"
+      ],
+      "produces": [
+        "en-encoder-tosa-mlir",
+        "de-encoder-tosa-mlir"
+      ],
+      "description": "Only for the graphs a target lists in params.tosa_graphs (a subset of npu_graphs; torq-sl26xx: encoder): StableHLO -> TOSA for Torq's tosa-torq input pipeline, which makes each function one NPU dispatch, as for the vendor's own models. A pre-pass rewrites divides by a broadcast (x / broadcast(sqrt(z)) -> x * broadcast(rsqrt(z)), x / broadcast(y) -> x * broadcast(1/y)), StableHLO's own --stablehlo-prepare-for-tosa --stablehlo-legalize-to-tosa runs in the stablehlo-tosa toolchain image, and the plugin translates what it leaves (broadcast_in_dim, sqrt, rsqrt, dot_general). Compiled with --input tosa-torq --torq-convert-dtypes --torq-disable-css, no const-expr hoisting, no elementwise fusion, weights inlined. On an SL2610 (en): encoder 137 -> 32 ms per 64-frame call (one dispatch instead of ~350), streaming RTF 0.34 -> 0.24, finish latency 324 -> 240 ms, finals identical on 12 golden clips."
     },
     {
       "id": "cross-kv",

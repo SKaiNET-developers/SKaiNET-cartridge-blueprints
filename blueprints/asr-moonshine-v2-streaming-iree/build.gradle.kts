@@ -4,6 +4,7 @@ import sk.ainet.cartridge.blueprint.gradle.IreeCompileTask
 import sk.ainet.cartridge.blueprint.gradle.IreeExportParametersTask
 import sk.ainet.cartridge.blueprint.gradle.Int8WeightsTask
 import sk.ainet.cartridge.blueprint.gradle.TorqBf16Task
+import sk.ainet.cartridge.blueprint.gradle.TorqTosaTask
 import sk.ainet.cartridge.blueprint.steps.Int8MatmulRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8WeightsRewrite
 
@@ -177,6 +178,8 @@ for ((language, source) in flavors) {
     val dataTilingGraphs = selected.map { t -> t.params["data_tiling"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
     // graphs that run on the Torq NPU (params.npu_graphs = "encoder"): whole graph in bf16, compiled for Torq
     val npuGraphs = selected.map { t -> t.params["npu_graphs"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
+    // NPU graphs among them that take the TOSA route (params.tosa_graphs = "encoder"): one dispatch per function
+    val tosaGraphs = selected.map { t -> t.params["tosa_graphs"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
 
     // compile — each graph → .vmfb for the profile's target; the decoder graphs reference the archive.
     for (graph in graphs) {
@@ -217,9 +220,21 @@ for ((language, source) in flavors) {
             input.set(source)
             output.set(work.map { it.file("convert/$language/$graph-torq-bf16.mlir") })
         }
+        // convert (graphs listed in params.tosa_graphs) — StableHLO → TOSA for Torq's single-dispatch route.
+        val torqTosa = tasks.register<TorqTosaTask>("torqTosa$lang$g") {
+            group = "cartridge blueprint steps"
+            image.set(selected.map { it.image("stablehlo-tosa") })
+            dependsOn(export, sourceTasks)
+            input.set(source)
+            output.set(work.map { it.file("convert/$language/$graph-tosa.mlir") })
+        }
         val onNpu = npuGraphs.zip(int8Graphs) { npu, int8 ->
             if (graph in npu && graph in int8) throw GradleException("$graph is in both params.npu_graphs and params.int8_weights")
             graph in npu
+        }
+        val viaTosa = tosaGraphs.zip(npuGraphs) { tosa, npu ->
+            if (graph in tosa && graph !in npu) throw GradleException("$graph is in params.tosa_graphs but not in params.npu_graphs")
+            graph in tosa
         }
         val useDataTiling = dataTilingGraphs.zip(npuGraphs) { dt, npu ->
             if (graph in dt && graph in npu) throw GradleException("$graph is in both params.data_tiling and params.npu_graphs")
@@ -230,15 +245,26 @@ for ((language, source) in flavors) {
         val compile = tasks.register<IreeCompileTask>("compile$lang$g") {
             group = "cartridge blueprint steps"
             image.set(selected.map { it.image(it.params["toolchain"] ?: "iree-tools") })
-            dependsOn(export, sourceTasks, useInt8.map { if (it) listOf(int8) else emptyList() }, onNpu.map { if (it) listOf(torqBf16) else emptyList() })
-            input.set(onNpu.flatMap { npu -> if (npu) torqBf16.flatMap { t -> t.output } else useInt8.flatMap { if (it) int8.flatMap { t -> t.output } else source } })
+            dependsOn(
+                export, sourceTasks, useInt8.map { if (it) listOf(int8) else emptyList() },
+                onNpu.zip(viaTosa) { npu, tosa -> if (tosa) listOf(torqTosa) else if (npu) listOf(torqBf16) else emptyList() },
+            )
+            input.set(onNpu.zip(viaTosa) { npu, tosa -> npu to tosa }.flatMap { (npu, tosa) ->
+                when {
+                    tosa -> torqTosa.flatMap { t -> t.output }
+                    npu -> torqBf16.flatMap { t -> t.output }
+                    else -> useInt8.flatMap { if (it) int8.flatMap { t -> t.output } else source }
+                }
+            })
             // weight-only int8: without hoisting and const-eval, so the dequantization is not folded back into f32
             // constants; int8 x int8 and data_tiling: data tiling and ukernels, the weights packed at compile time
             extraArgs.set(useInt8.zip(useInt8Act) { int8, act -> int8 to act }.zip(useDataTiling) { (int8, act), dt ->
                 if (int8 && !act && dt) throw GradleException("$graph is in params.data_tiling but weight-only int8: list it in int8_activations")
                 if (act || dt) Int8MatmulRewrite.COMPILE_FLAGS else if (int8) Int8WeightsRewrite.COMPILE_FLAGS else emptyList()
             })
-            backend.set(onNpu.flatMap { if (it) provider { "torq" } else selected.map { t -> t.param("backend") } })
+            backend.set(onNpu.zip(viaTosa) { npu, tosa -> npu to tosa }.flatMap { (npu, tosa) ->
+                if (tosa) provider { "torq-tosa" } else if (npu) provider { "torq" } else selected.map { t -> t.param("backend") }
+            })
             target.set(onNpu.flatMap { if (it) selected.map { t -> t.params["torq_hw"] ?: "SL2610" } else selected.map { t -> t.param("iree_target") } })
             // f32 decoder graphs read their weights from the archive; int8 ones carry them inline
             if (graph == "prefill" || graph == "with_past") parameterScope.set(useInt8.map { if (it) null else "model" })
