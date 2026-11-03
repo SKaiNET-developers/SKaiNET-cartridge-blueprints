@@ -274,6 +274,7 @@
         "conv1d_im2col": "true",
         "int8_weights": "adapter,prefill,with_past",
         "npu_graphs": "frontend,encoder",
+        "cross_kv_cache": "true",
         "torq_hw": "SL2610"
       }
     }
@@ -448,6 +449,24 @@
         "de-encoder-torq-bf16-mlir"
       ],
       "description": "Only for the graphs a target lists in params.npu_graphs (torq-sl26xx: the frontend and the encoder): the whole graph in bf16 for the Synaptics Torq NPU, inputs and outputs stay f32. Weight matmuls read pre-transposed bf16 constants (Torq asserts on transposed-B bf16 matmuls), an im2col conv weight its folded [out, k*in] bf16 matrix, sum reductions become matmuls with an all-ones matrix (Torq gets the small row vectors between a reduce and its broadcast wrong), and optimization barriers keep IREE from fusing anything into a matmul, a transpose or a strided slice (Torq drops ops fused there, or fails on them). A barrier also follows every elementwise op that feeds another one or a transpose: Torq runs an elementwise dispatch on the NPU only when it holds a single op, fused chains run on the host. The compile step then runs the Torq backend (compile-torq --torq-hw=<params.torq_hw>) with --torq-disable-css --iree-scheduling-optimize-bindings=false --iree-flow-inline-constants-max-byte-length=4194304. On an SL2610 with Torq 2.3.0 (en): cosine 0.99996 (frontend) and 0.9995 (encoder) against the f32 graphs, finals identical on 12 golden clips, streaming RTF 0.77 -> 0.57 against cpu-sl26xx (0.71 with only the encoder on the NPU)."
+    },
+    {
+      "id": "cross-kv",
+      "kind": "convert",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "en-prefill-mlir",
+        "en-adapter-mlir",
+        "de-prefill-mlir",
+        "de-adapter-mlir"
+      ],
+      "produces": [
+        "en-prefill-kv-mlir",
+        "en-adapter-kv-mlir",
+        "de-prefill-kv-mlir",
+        "de-adapter-kv-mlir"
+      ],
+      "description": "Only for targets with params.cross_kv_cache = \"true\" (torq-sl26xx), whose runtime keeps a cross-K/V cache: the per-row cross-attention K/V projections move from prefill, which ran them over all 256 padded memory rows on every restart, to the adapter, which runs them once on the window's rows and returns each layer's K and V after its output. Prefill then reads the cached K/V instead of the memory (one argument per layer and side, in the order it returned them). The decoder-step graph is unchanged. On an SL2610 (en, torq-sl26xx): finals identical on 12 golden clips, prefill 166 -> 32 ms per call, adapter 1 -> 34 ms per window, streaming RTF 0.56 -> 0.48, finish latency 581 -> 482 ms."
     },
     {
       "id": "compile",

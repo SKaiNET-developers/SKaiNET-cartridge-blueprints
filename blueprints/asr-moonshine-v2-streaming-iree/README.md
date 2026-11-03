@@ -116,12 +116,19 @@ Three `convert` rewrites run before the compile when the target asks for them:
   Those graphs compile with the image's `compile-torq --target <params.torq_hw>` and
   `--torq-disable-css --iree-scheduling-optimize-bindings=false --iree-flow-inline-constants-max-byte-length=4194304`.
 
+- `params.cross_kv_cache = "true"` (for a runtime with a cross-K/V cache; `crossKv<Lang>`): prefill computes every
+  layer's cross-attention K and V from all 256 padded memory rows on each restart, though a row's K/V never change
+  once it is final. The step moves those projections to the adapter, which runs once per window and returns its
+  rows' K and V after its output; prefill reads the cached K/V instead of the memory. The decoder-step graph is
+  unchanged.
+
 `cpu-sl26xx` sets the first two. On its Cortex-A55 the int8 weights take the streaming real-time factor from 1.48 to
 0.95, with identical finals on 16 test clips. `torq-sl26xx` moves the frontend and the encoder to the NPU
 (`npu_graphs = "frontend,encoder"`, int8 for the decoder graphs and the adapter): on an SL2610 with Torq 2.3.0 they
 match their f32 graphs at cosine 0.99996 and 0.9995, finals are identical on 12 test clips, and the real-time factor
 goes from 0.77 (`cpu-sl26xx`) to 0.57; the frontend takes 48 ms per window instead of 185 ms. The pack's descriptor
-has to place both graphs on the `torq` device.
+has to place both graphs on the `torq` device. With `cross_kv_cache` as well, prefill takes 32 ms per call instead of
+166 ms, the real-time factor goes to 0.48 and the final arrives ~480 ms after the last sample (was ~580 ms).
 
 ## Step 6 — Runtime, measure, pack, sign
 

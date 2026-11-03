@@ -16,6 +16,7 @@ import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import org.gradle.work.DisableCachingByDefault
 import sk.ainet.cartridge.blueprint.steps.Conv1dIm2colRewrite
+import sk.ainet.cartridge.blueprint.steps.CrossKvCacheRewrite
 import sk.ainet.cartridge.blueprint.steps.HostGatherRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8ParametersRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8WeightsRewrite
@@ -112,6 +113,27 @@ abstract class TorqBf16Task : DefaultTask() {
         logger.lifecycle(
             "torq-bf16: ${result.weightMatmuls} weight matmuls and ${result.sumsAsMatmuls} sums as bf16 matmuls, " +
                 "${result.barriers} barriers in ${output.get().asFile.name}",
+        )
+    }
+}
+
+/**
+ * `convert` for targets with `params.cross_kv_cache = "true"`: the prefill takes the cross-attention K/V instead of the
+ * memory, and the adapter computes them for its window rows ([CrossKvCacheRewrite]).
+ */
+@CacheableTask
+abstract class CrossKvCacheTask : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val prefill: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val adapter: RegularFileProperty
+    @get:OutputFile abstract val prefillOutput: RegularFileProperty
+    @get:OutputFile abstract val adapterOutput: RegularFileProperty
+
+    @TaskAction
+    fun run() = materializing {
+        val r = CrossKvCacheRewrite.rewrite(prefill.get().asFile, adapter.get().asFile, prefillOutput.get().asFile, adapterOutput.get().asFile)
+        logger.lifecycle(
+            "cross-kv: ${r.coneOps} ops and ${r.outputs} K/V outputs moved from prefill (${r.memoryRows} memory rows) " +
+                "to the adapter (${r.windowRows} rows)",
         )
     }
 }
