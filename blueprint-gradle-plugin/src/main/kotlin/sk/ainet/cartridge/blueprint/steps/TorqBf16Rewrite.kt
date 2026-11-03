@@ -4,7 +4,7 @@ import sk.ainet.cartridge.blueprint.model.MaterializationException
 
 /**
  * A `convert` step on exported StableHLO: the whole graph in bf16, shaped for the Synaptics Torq NPU (Torq 2.3.0).
- * The function keeps its f32 inputs and outputs; everything between them is bf16.
+ * Every function keeps its f32 inputs and outputs; everything between them is bf16.
  *
  * 1. Weight matmuls: `dot_general %a, transpose(const [out, in])` reads a bf16 constant `[in, out]` instead (the
  *    transpose done here, the values rounded to nearest even). Torq lowers plain bf16 matmuls to the NPU but asserts on
@@ -242,15 +242,18 @@ object TorqBf16Rewrite {
     private val HEX_SPLAT = Regex("""dense<0x([0-9A-Fa-f]{8})>""")
 
     private fun toBf16(lines: List<String>): Pair<List<String>, Int> {
-        val sig = lines.indexOfFirst { it.trimStart().startsWith("func.func") }
-        val args = ARG.findAll(lines[sig]).map { it.groupValues[1] to it.groupValues[2] }.toList()
-        val argNames = args.associate { (a, _) -> a to "${a}_16" }
         val out = ArrayList<String>(lines.size + 400)
-        out += lines.subList(0, sig + 1)
-        for ((a, t) in args) out += "    ${a}_16 = stablehlo.convert $a : ($t) -> ${b16(t)}"
+        var argNames = emptyMap<String, String>()
         var n = 0
-        for (raw in lines.subList(sig + 1, lines.size)) {
-            if (raw.trimStart().startsWith("//")) { out += raw; continue }
+        for (raw in lines) {
+            if (raw.trimStart().startsWith("//") || raw.trimStart().startsWith("module")) { out += raw; continue }
+            if (raw.length <= LONG && raw.trimStart().startsWith("func.func")) {  // every function: f32 arguments in, bf16 on
+                val args = ARG.findAll(raw).map { it.groupValues[1] to it.groupValues[2] }.toList()
+                argNames = args.associate { (a, _) -> a to "${a}_16" }
+                out += raw
+                for ((a, t) in args) out += "    ${a}_16 = stablehlo.convert $a : ($t) -> ${b16(t)}"
+                continue
+            }
             val ret = RETURN.matchEntire(raw)
             if (ret != null) {
                 val (ind, values, types) = ret.destructured

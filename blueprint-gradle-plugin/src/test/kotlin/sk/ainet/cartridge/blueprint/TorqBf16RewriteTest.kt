@@ -135,6 +135,18 @@ ${(0 until 4).joinToString("\n") { k -> "            %s$k = \"stablehlo.slice\"(
     }
 
     @Test
+    fun `a second function gets its own argument conversions`() {
+        val two = module.replace("\n}\n", "\n  func.func @kv(%arg0: tensor<1x4x64xf32>) -> (tensor<1x4x64xf32>) {\n    %x = stablehlo.dot_general %arg0, %v0x, contracting_dims = [2] x [0] : (tensor<1x4x64xf32>, tensor<64x64xf32>) -> tensor<1x4x64xf32>\n    return %x : tensor<1x4x64xf32>\n  }\n}\n")
+            .replace("%v0x,", "%w,").replace("  func.func @kv(%arg0: tensor<1x4x64xf32>) -> (tensor<1x4x64xf32>) {\n", "  func.func @kv(%arg0: tensor<1x4x64xf32>) -> (tensor<1x4x64xf32>) {\n    %w = stablehlo.constant dense<$weight> : tensor<64x64xf32>\n")
+        val r = TorqBf16Rewrite.rewrite(two)
+        val kv = r.mlir.substringAfter("func.func @kv")
+        assertContains(kv, "%arg0_16 = stablehlo.convert %arg0 : (tensor<1x4x64xf32>) -> tensor<1x4x64xbf16>")
+        assertContains(kv, "%x_o = stablehlo.dot_general %arg0_16, %w, contracting_dims = [2] x [0] : (tensor<1x4x64xbf16>, tensor<64x64xbf16>) -> tensor<1x4x64xbf16>")
+        assertContains(kv, "%x_out = stablehlo.convert %x : (tensor<1x4x64xbf16>) -> tensor<1x4x64xf32>")
+        assertEquals(2, r.weightMatmuls)
+    }
+
+    @Test
     fun `a module without weight matmuls is refused`() {
         val e = assertFailsWith<MaterializationException> { TorqBf16Rewrite.rewrite(module.replace("%v9 = stablehlo.dot_general %v7, %v8,", "%v9 = stablehlo.dot_general %v7, %v7,")) }
         assertContains(e.message!!, "no `dot_general` with a constant operand found")

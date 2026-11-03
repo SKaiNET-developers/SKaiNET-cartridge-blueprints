@@ -118,8 +118,11 @@ Three `convert` rewrites run before the compile when the target asks for them:
 
 - `params.cross_kv_cache = "true"` (for a runtime with a cross-K/V cache; `crossKv<Lang>`): prefill computes every
   layer's cross-attention K and V from all 256 padded memory rows on each restart, though a row's K/V never change
-  once it is final. The step moves those projections to the adapter, which runs once per window and returns its
-  rows' K and V after its output; prefill reads the cached K/V instead of the memory. The decoder-step graph is
+  once it is final. The step takes those projections out of prefill, which then reads the cached K/V instead of the
+  memory, and adds them to the encoder module as a second function, `moonshine_v2_cross_kv`: one matmul from a
+  window of adapter rows (`[1, 64, 320]`) to every layer's K and V side by side (`[1, 64, 12·320]`; output j in
+  columns `j·320…`, head h at `h·40`). The runtime calls it after the adapter and splits the heads as it copies the
+  finalized rows into its cache. It runs on the encoder's device; the adapter and the decoder-step graph are
   unchanged.
 
 `cpu-sl26xx` sets the first two. On its Cortex-A55 the int8 weights take the streaming real-time factor from 1.48 to
@@ -128,7 +131,8 @@ Three `convert` rewrites run before the compile when the target asks for them:
 match their f32 graphs at cosine 0.99996 and 0.9995, finals are identical on 12 test clips, and the real-time factor
 goes from 0.77 (`cpu-sl26xx`) to 0.57; the frontend takes 48 ms per window instead of 185 ms. The pack's descriptor
 has to place both graphs on the `torq` device. With `cross_kv_cache` as well, prefill takes 32 ms per call instead of
-166 ms, the real-time factor goes to 0.48 and the final arrives ~480 ms after the last sample (was ~580 ms).
+166 ms and the K/V of a window 4.5 ms on the NPU; the real-time factor goes to 0.44 and the final arrives ~450 ms
+after the last sample (was ~580 ms).
 
 ## Step 6 — Runtime, measure, pack, sign
 

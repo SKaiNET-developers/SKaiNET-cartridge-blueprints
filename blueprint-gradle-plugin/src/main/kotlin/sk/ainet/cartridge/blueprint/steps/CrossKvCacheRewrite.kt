@@ -6,7 +6,7 @@ import java.io.Writer
 
 /**
  * A `convert` step on the exported streaming decoder: the cross-attention K/V of each memory row is computed once, by
- * the adapter that produces the row, instead of by every prefill over the whole padded memory.
+ * one matmul over the window's rows, instead of by every prefill over the whole padded memory.
  *
  * The prefill graph projects its memory argument (`[1, M, D]`, M = 256 padded rows) to every layer's cross K and V
  * (`[1, H, M, d]`) with per-row matmuls, reshapes and transposes: the "memory cone". Those ops see one row at a time,
@@ -15,15 +15,19 @@ import java.io.Writer
  *
  * - prefill: the memory argument is replaced by the cone's outputs, one argument per distinct value, in the order the
  *   graph returned them (layer 0 K, layer 0 V, …); the cone, its weights and those outputs are dropped.
- * - adapter: the cone is appended after the adapter's output (`[1, C, D]`, C = window rows), its types retyped from
- *   M to C rows and its constants renamed `%kv_…`; the adapter returns its output, then the K/V of its C rows.
+ * - encoder module: gets a second function, `<prefix>cross_kv` (the adapter's name with `adapter` replaced), from the
+ *   adapter's output (`[1, C, D]`, C = window rows) to `[1, C, n·H·d]`: all n K/V projections as one matmul, their
+ *   weights side by side, output j in columns `[j·H·d, (j+1)·H·d)`, head h of it at `h·d`. Each cone output must be
+ *   `reshape(transpose(reshape(dot_general(memory, W)), [1, 0, 2]))` with a constant W (or its transpose).
  *
- * The caller keeps a `[H, M, d]` cache per layer and side, copies the finalized rows of each window in, and passes the
- * cache to prefill and the decoder steps. The decoder-step graph is unchanged. Streams line by line: an exported
- * prefill is ~300 MB of text, single constants several MB.
+ * One matmul instead of n, and no head transposes: on the Torq NPU those run as host fallback, and the adapter's
+ * positional gather is host code too (~20 ms per window), so the adapter stays where it was and only the projection
+ * moves next to the encoder. The caller keeps a `[H, M, d]` cache per layer and side, copies the finalized rows of
+ * each window in (splitting the heads), and passes the cache to prefill and the decoder steps. The decoder-step
+ * graph is unchanged. Streams prefill line by line: an exported prefill is ~300 MB of text, single constants several MB.
  */
 object CrossKvCacheRewrite {
-    data class Result(val outputs: Int, val memoryRows: Int, val windowRows: Int, val coneOps: Int)
+    data class Result(val outputs: Int, val memoryRows: Int, val windowRows: Int, val coneOps: Int, val function: String)
 
     private const val LONG = 4096  // longer lines are constant literals: no uses in them
     private val NAME = Regex("""%[\w]+""")
@@ -32,8 +36,12 @@ object CrossKvCacheRewrite {
     private val ARG = Regex("""(%arg\d+): (tensor<[^>]+>)""")
     private val RETURN = Regex("""^( *)return (.+) : (.+)$""")
     private val MEMORY = Regex("""tensor<1x(\d+)x(\d+)xf32>""")
+    private val RESHAPE = Regex("""^stablehlo\.reshape (%[\w]+) : \(tensor<[^>]+>\) -> tensor<([0-9x]+)xf32>$""")
+    private val TRANSPOSE = Regex("""^stablehlo\.transpose (%[\w]+), dims = \[([\d, ]+)\] : \(tensor<[^>]+>\) -> tensor<[^>]+>$""")
+    private val DOT = Regex("""^stablehlo\.dot_general (%[\w]+), (%[\w]+), contracting_dims = \[2\] x \[0\] : \(tensor<1x\d+x\d+xf32>, tensor<(\d+)x(\d+)xf32>\) -> tensor<1x\d+x\d+xf32>$""")
+    private val CONSTANT = Regex("""^stablehlo\.constant dense<(.*)> : tensor<(\d+)x(\d+)xf32>$""")
 
-    fun rewrite(prefill: File, adapter: File, prefillOut: File, adapterOut: File): Result {
+    fun rewrite(prefill: File, adapter: File, encoder: File, prefillOut: File, encoderOut: File): Result {
         // pass 1: the prefill's ops (constant literals only by name)
         val defs = LinkedHashMap<String, String>()  // name -> right-hand side (long constants: "constant")
         var sig: MatchResult? = null
@@ -78,20 +86,106 @@ object CrossKvCacheRewrite {
         val argOf = cone.filter { canonical.getValue(it) in newArg }.associateWith { newArg.getValue(canonical.getValue(it)) }
         val boundaryType = boundary.associateWith { v -> retTypes[retValues.indexOfFirst { canonical[it] == v }] }
 
-        // the static values the cone needs (weights and their transposes), for the adapter
+        // the static values the cone needs (weights and their transposes); prefill drops those only the cone uses
         val needed = LinkedHashSet<String>()
         fun need(v: String) { if (v in static && needed.add(v)) operands(defs.getValue(v)).forEach(::need) }
         cone.forEach { c -> operands(defs.getValue(c)).forEach(::need) }
 
-        val window = writeAdapter(adapter, adapterOut, prefill, mem, rows, dim.toInt(), cone, needed, defs, boundary)
+        val projections = boundary.map { projection(it, mem, defs) }
+        val (window, function) = writeEncoder(encoder, encoderOut, adapter, prefill, dim.toInt(), projections)
         writePrefill(prefill, prefillOut, s, r, args, mem, cone, needed, defs, argOf, newArg, boundaryType)
-        return Result(boundary.size, rows, window, cone.size)
+        return Result(boundary.size, rows, window, cone.size, function)
+    }
+
+    /** One cone output's weight: the constant's name, and whether the matmul reads it transposed (`[out, in]`). */
+    private data class Projection(val weight: String, val transposed: Boolean, val inputs: Int, val outputs: Int)
+
+    private fun projection(v: String, mem: String, defs: Map<String, String>): Projection {
+        fun fail(): Nothing = throw MaterializationException(
+            "cross-kv: $v is not reshape(transpose(reshape(dot_general(memory, weight)), [1, 0, 2])); cannot merge it",
+        )
+        val outer = RESHAPE.matchEntire(defs.getValue(v)) ?: fail()
+        val heads = TRANSPOSE.matchEntire(defs[outer.groupValues[1]] ?: fail())?.takeIf { it.groupValues[2] == "1, 0, 2" } ?: fail()
+        val inner = RESHAPE.matchEntire(defs[heads.groupValues[1]] ?: fail()) ?: fail()
+        val dot = DOT.matchEntire(defs[inner.groupValues[1]] ?: fail())?.takeIf { it.groupValues[1] == mem } ?: fail()
+        val (w, rows, cols) = dot.destructured.let { (_, w, r, c) -> Triple(w, r.toInt(), c.toInt()) }
+        val t = TRANSPOSE.matchEntire(defs[w] ?: fail())
+        return when {
+            t != null && t.groupValues[2] == "1, 0" && defs[t.groupValues[1]]?.startsWith("stablehlo.constant") == true ->
+                Projection(t.groupValues[1], transposed = true, inputs = rows, outputs = cols)
+            defs[w]?.startsWith("stablehlo.constant") == true -> Projection(w, transposed = false, inputs = rows, outputs = cols)
+            else -> fail()
+        }
+    }
+
+    /** The encoder module plus the merged projection function. Returns the window row count and the function name. */
+    private fun writeEncoder(encoder: File, out: File, adapter: File, prefill: File, dim: Int, projections: List<Projection>): Pair<Int, String> {
+        val adp = adapter.useLines { lines -> lines.firstNotNullOfOrNull { SIG.matchEntire(it) } }
+            ?: throw MaterializationException("cross-kv: no function signature in ${adapter.name}")
+        val adpName = adp.groupValues[1].substringAfter("@")
+        val window = MEMORY.matchEntire(adp.groupValues[3])?.takeIf { it.groupValues[2].toInt() == dim }?.groupValues?.get(1)?.toInt()
+            ?: throw MaterializationException("cross-kv: ${adapter.name} returns ${adp.groupValues[3]}, not [1, C, $dim]")
+        val function = if (adpName.endsWith("adapter")) adpName.removeSuffix("adapter") + "cross_kv" else "${adpName}_cross_kv"
+        if (projections.any { it.inputs != dim }) throw MaterializationException("cross-kv: a K/V weight does not take $dim inputs")
+        val width = projections.sumOf { it.outputs }
+
+        // the weights side by side: merged[i][offset_j + o] = W_j[i][o]
+        val merged = FloatArray(dim * width)
+        val offsets = projections.runningFold(0) { a, p -> a + p.outputs }
+        val byName = projections.withIndex().groupBy({ it.value.weight }, { it.index })
+        prefill.bufferedReader().useLines { lines ->
+            for (l in lines) {
+                val d = DEF.find(if (l.length > LONG) l.substring(0, 256) else l) ?: continue
+                val js = byName[d.groupValues[2]] ?: continue
+                for (j in js) {
+                    val p = projections[j]
+                    val (r, c) = if (p.transposed) p.outputs to p.inputs else p.inputs to p.outputs
+                    val w = constantValues(l, d.groupValues[2], r, c)
+                    for (i in 0 until dim) for (o in 0 until p.outputs)
+                        merged[i * width + offsets[j] + o] = if (p.transposed) w[o * dim + i] else w[i * p.outputs + o]
+                }
+            }
+        }
+
+        val text = encoder.readLines()
+        val close = text.indexOfLast { it.trim() == "}" }
+        if (close < 0 || text.none { SIG.matchEntire(it) != null }) throw MaterializationException("cross-kv: cannot read ${encoder.name}")
+        val inT = "tensor<1x${window}x${dim}xf32>"
+        val outT = "tensor<1x${window}x${width}xf32>"
+        val wT = "tensor<${dim}x${width}xf32>"
+        out.parentFile.mkdirs()
+        out.bufferedWriter().use { w ->
+            for (i in 0 until close) w.line(text[i])
+            w.line("  func.func @$function(%arg0: $inT) -> ($outT) {")
+            w.write("    %xkv_w = stablehlo.constant dense<[")
+            for (i in 0 until dim) {
+                if (i > 0) w.write(", ")
+                w.write("[")
+                for (o in 0 until width) { if (o > 0) w.write(", "); w.write(merged[i * width + o].toString()) }
+                w.write("]")
+            }
+            w.line("]> : $wT")
+            w.line("    %xkv = stablehlo.dot_general %arg0, %xkv_w, contracting_dims = [2] x [0] : ($inT, $wT) -> $outT")
+            w.line("    return %xkv : $outT")
+            w.line("  }")
+            for (i in close until text.size) w.line(text[i])
+        }
+        return window to function
+    }
+
+    /** A `[rows, cols]` f32 constant's values, row-major: a nested literal or a splat. */
+    private fun constantValues(line: String, name: String, rows: Int, cols: Int): FloatArray {
+        val rhs = line.substringAfter(" = ")
+        if (line.length <= LONG) {
+            val m = CONSTANT.matchEntire(rhs) ?: throw MaterializationException("cross-kv: cannot read $name")
+            if (m.groupValues[2].toInt() != rows || m.groupValues[3].toInt() != cols) throw MaterializationException("cross-kv: $name is not ${rows}x$cols")
+            if (!m.groupValues[1].startsWith("[")) return FloatArray(rows * cols) { m.groupValues[1].trim().toFloat() }
+        }
+        if (!line.endsWith("]]> : tensor<${rows}x${cols}xf32>")) throw MaterializationException("cross-kv: $name is not a ${rows}x$cols f32 literal")
+        return Int8WeightsRewrite.parseFloats(line, line.indexOf("[["), line.lastIndexOf("]]>") + 2, rows * cols, name, "cross-kv")
     }
 
     private fun operands(rhs: String): List<String> = NAME.findAll(rhs).map { it.value }.toList()
-
-    /** The result type of an op's right-hand side: after `->`, or after the last `:` for same-type ops. */
-    private fun resultType(rhs: String): String = if ("-> " in rhs) rhs.substringAfterLast("-> ") else rhs.substringAfterLast(": ")
 
     private fun writePrefill(
         prefill: File, out: File, sig: MatchResult, ret: MatchResult, args: List<Pair<String, String>>, mem: String,
@@ -130,54 +224,6 @@ object CrossKvCacheRewrite {
                 }
             }
         }
-    }
-
-    /** Appends the cone to the adapter, retyped to its window rows. Returns the window row count. */
-    private fun writeAdapter(
-        adapter: File, out: File, prefill: File, mem: String, rows: Int, dim: Int,
-        cone: Set<String>, needed: Set<String>, defs: Map<String, String>, boundary: List<String>,
-    ): Int {
-        val text = adapter.readLines()
-        val sigAt = text.indexOfFirst { SIG.matchEntire(it) != null }
-        val retAt = text.indexOfLast { RETURN.matchEntire(it) != null }
-        if (sigAt < 0 || retAt < 0) throw MaterializationException("cross-kv: cannot read ${adapter.name}")
-        val sig = SIG.matchEntire(text[sigAt])!!
-        val ret = RETURN.matchEntire(text[retAt])!!
-        if (", " in ret.groupValues[2]) throw MaterializationException("cross-kv: ${adapter.name} already returns more than one value")
-        val outType = ret.groupValues[3]
-        val window = MEMORY.matchEntire(outType)?.takeIf { it.groupValues[2].toInt() == dim }?.groupValues?.get(1)?.toInt()
-            ?: throw MaterializationException("cross-kv: ${adapter.name} returns $outType, not [1, C, $dim]")
-        val rename = (needed + cone).associateWith { "%kv_" + it.drop(1) } + (mem to ret.groupValues[2])
-        fun renamed(l: String) = NAME.replace(l) { rename[it.value] ?: it.value }
-        // only the memory-derived types change rows; a weight with M rows would make that ambiguous
-        val rowDim = Regex("""(?<=[<x])$rows(?=x)""")
-        needed.forEach { v ->
-            if (defs.getValue(v) != "stablehlo.constant" && rowDim.containsMatchIn(defs.getValue(v)))
-                throw MaterializationException("cross-kv: $v has a dimension of $rows, the memory's row count")
-        }
-        fun retyped(rhs: String) = Regex("""tensor<[^>]+>""").replace(rhs) { t ->
-            if (rowDim.findAll(t.value).count() > 1) throw MaterializationException("cross-kv: ${t.value} has more than one dimension of $rows")
-            rowDim.replace(t.value, "$window")
-        }
-
-        val ind = ret.groupValues[1]
-        val kvTypes = boundary.map { v -> resultType(retyped(defs.getValue(v))) }
-        out.parentFile.mkdirs()
-        out.bufferedWriter().use { w ->
-            for (i in 0 until retAt) w.line(if (i == sigAt) "${sig.groupValues[1]}(${sig.groupValues[2]}) -> ($outType, ${kvTypes.joinToString(", ")}) {" else text[i])
-            // weights (and their transposes) from prefill, in prefill order
-            prefill.bufferedReader().useLines { lines ->
-                for (l in lines) {
-                    val name = DEF.find(if (l.length > LONG) l.substring(0, 256) else l)?.groupValues?.get(2) ?: continue
-                    if (name !in needed) continue
-                    w.line(if (l.length > LONG) l.replaceFirst(name, rename.getValue(name)) else renamed(l))
-                }
-            }
-            for (c in cone) w.line("$ind${rename.getValue(c)} = ${retyped(renamed(defs.getValue(c)))}")
-            w.line("${ind}return ${ret.groupValues[2]}, ${boundary.joinToString(", ") { rename.getValue(it) }} : $outType, ${kvTypes.joinToString(", ")}")
-            for (i in retAt + 1 until text.size) w.line(text[i])
-        }
-        return window
     }
 
     private fun Writer.line(s: String) { write(s); write("\n") }

@@ -119,21 +119,24 @@ abstract class TorqBf16Task : DefaultTask() {
 
 /**
  * `convert` for targets with `params.cross_kv_cache = "true"`: the prefill takes the cross-attention K/V instead of the
- * memory, and the adapter computes them for its window rows ([CrossKvCacheRewrite]).
+ * memory, and the encoder module gets one matmul that computes them for a window of adapter rows ([CrossKvCacheRewrite]).
  */
 @CacheableTask
 abstract class CrossKvCacheTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val prefill: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val adapter: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val encoder: RegularFileProperty
     @get:OutputFile abstract val prefillOutput: RegularFileProperty
-    @get:OutputFile abstract val adapterOutput: RegularFileProperty
+    @get:OutputFile abstract val encoderOutput: RegularFileProperty
 
     @TaskAction
     fun run() = materializing {
-        val r = CrossKvCacheRewrite.rewrite(prefill.get().asFile, adapter.get().asFile, prefillOutput.get().asFile, adapterOutput.get().asFile)
+        val r = CrossKvCacheRewrite.rewrite(
+            prefill.get().asFile, adapter.get().asFile, encoder.get().asFile, prefillOutput.get().asFile, encoderOutput.get().asFile,
+        )
         logger.lifecycle(
             "cross-kv: ${r.coneOps} ops and ${r.outputs} K/V outputs moved from prefill (${r.memoryRows} memory rows) " +
-                "to the adapter (${r.windowRows} rows)",
+                "to one matmul in the encoder module (@${r.function}, ${r.windowRows} rows)",
         )
     }
 }

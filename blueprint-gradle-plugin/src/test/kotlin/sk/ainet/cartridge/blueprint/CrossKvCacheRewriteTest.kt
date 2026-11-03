@@ -13,10 +13,13 @@ import kotlin.test.assertFalse
 class CrossKvCacheRewriteTest {
     // A decoder prefill in small: 6 memory rows of 8, 2 heads of 4. Cross K/V per row from the memory, a query from
     // the token, attention against K (through a duplicate reshape, as the exporter emits them).
+    // the K projection's weight, [out, in], c[o][i] = 8 o + i; the graph reads it transposed
+    private val kWeight = (0 until 8).joinToString(", ", "[", "]") { o -> (0 until 8).joinToString(", ", "[", "]") { i -> "${8 * o + i}.0" } }
+
     private val prefill = """
         module {
           func.func @pre(%arg0: tensor<1x1x8xf32>, %arg1: tensor<1x6x8xf32>, %arg2: tensor<1x1x1x6xf32>) -> (tensor<1x2x1x6xf32>, tensor<1x2x6x4xf32>, tensor<1x2x6x4xf32>) {
-            %v0 = stablehlo.constant dense<1.0> : tensor<8x8xf32>
+            %v0 = stablehlo.constant dense<$kWeight> : tensor<8x8xf32>
             %v1 = stablehlo.constant dense<2.0> : tensor<8x8xf32>
             %v2 = stablehlo.constant dense<3.0> : tensor<8x8xf32>
             %v3 = stablehlo.transpose %v0, dims = [1, 0] : (tensor<8x8xf32>) -> tensor<8x8xf32>
@@ -48,17 +51,28 @@ class CrossKvCacheRewriteTest {
         }
     """.trimIndent() + "\n"
 
+    private val encoder = """
+        module {
+          func.func @enc(%arg0: tensor<1x2x8xf32>) -> (tensor<1x2x8xf32>) {
+            return %arg0 : tensor<1x2x8xf32>
+          }
+        }
+    """.trimIndent() + "\n"
+
     private fun run(pre: String = prefill): Triple<CrossKvCacheRewrite.Result, String, String> {
         val d = createTempDirectory("cross-kv").toFile()
-        val (p, a) = File(d, "prefill.mlir").apply { writeText(pre) } to File(d, "adapter.mlir").apply { writeText(adapter) }
-        val r = CrossKvCacheRewrite.rewrite(p, a, File(d, "prefill-kv.mlir"), File(d, "adapter-kv.mlir"))
-        return Triple(r, File(d, "prefill-kv.mlir").readText(), File(d, "adapter-kv.mlir").readText())
+        fun file(name: String, text: String) = File(d, name).apply { writeText(text) }
+        val r = CrossKvCacheRewrite.rewrite(
+            file("prefill.mlir", pre), file("adapter.mlir", adapter), file("encoder.mlir", encoder),
+            File(d, "prefill-kv.mlir"), File(d, "encoder-kv.mlir"),
+        )
+        return Triple(r, File(d, "prefill-kv.mlir").readText(), File(d, "encoder-kv.mlir").readText())
     }
 
     @Test
     fun `prefill reads the cross K and V as arguments, its projections and their weights are gone`() {
         val (r, pre, _) = run()
-        assertEquals(CrossKvCacheRewrite.Result(outputs = 2, memoryRows = 6, windowRows = 2, coneOps = 9), r)
+        assertEquals(CrossKvCacheRewrite.Result(outputs = 2, memoryRows = 6, windowRows = 2, coneOps = 9, function = "adp_cross_kv"), r)
         assertContains(pre, "func.func @pre(%arg0: tensor<1x1x8xf32>, %ckv0: tensor<1x2x6x4xf32>, %ckv1: tensor<1x2x6x4xf32>, %arg2: tensor<1x1x1x6xf32>) -> (tensor<1x2x1x6xf32>) {")
         assertContains(pre, "%v16 = stablehlo.dot_general %v15, %ckv0, batching_dims")
         assertContains(pre, "return %v16 : tensor<1x2x1x6xf32>")
@@ -67,14 +81,24 @@ class CrossKvCacheRewriteTest {
     }
 
     @Test
-    fun `the adapter computes the K and V of its window rows and returns them after its output`() {
-        val (_, _, adp) = run()
-        assertContains(adp, "func.func @adp(%arg0: tensor<1x2xi32>, %arg1: tensor<1x2x8xf32>) -> (tensor<1x2x8xf32>, tensor<1x2x2x4xf32>, tensor<1x2x2x4xf32>) {")
-        assertContains(adp, "%kv_v0 = stablehlo.constant dense<1.0> : tensor<8x8xf32>")
-        assertContains(adp, "%kv_v5 = stablehlo.dot_general %v1, %kv_v3, contracting_dims = [2] x [0] : (tensor<1x2x8xf32>, tensor<8x8xf32>) -> tensor<1x2x8xf32>")
-        assertContains(adp, "%kv_v8 = stablehlo.transpose %kv_v7, dims = [1, 0, 2] : (tensor<2x2x4xf32>) -> tensor<2x2x4xf32>")
-        assertContains(adp, "return %v1, %kv_v9, %kv_v13 : tensor<1x2x8xf32>, tensor<1x2x2x4xf32>, tensor<1x2x2x4xf32>")
-        assertFalse("%kv_v2 =" in adp, "the query weight stays in prefill")
+    fun `the encoder module gets one matmul from adapter rows to every K and V, weights side by side`() {
+        val (_, _, enc) = run()
+        assertContains(enc, "func.func @enc(%arg0: tensor<1x2x8xf32>) -> (tensor<1x2x8xf32>) {")
+        assertContains(enc, "func.func @adp_cross_kv(%arg0: tensor<1x2x8xf32>) -> (tensor<1x2x16xf32>) {")
+        // row i: K columns W[i][o] = c[o][i] = 8 o + i, then the V weight's splat 2.0
+        val k0 = (0 until 8).joinToString(", ") { o -> "${8 * o}.0" }
+        assertContains(enc, "%xkv_w = stablehlo.constant dense<[[$k0, ${List(8) { "2.0" }.joinToString(", ")}], [1.0, 9.0,")
+        assertContains(enc, "]]> : tensor<8x16xf32>")
+        assertContains(enc, "%xkv = stablehlo.dot_general %arg0, %xkv_w, contracting_dims = [2] x [0] : (tensor<1x2x8xf32>, tensor<8x16xf32>) -> tensor<1x2x16xf32>")
+        assertContains(enc, "return %xkv : tensor<1x2x16xf32>\n  }\n}")
+    }
+
+    @Test
+    fun `a K or V that is not a plain projection of the memory is refused`() {
+        val e = assertFailsWith<MaterializationException> {
+            run(prefill.replace("%v7 = stablehlo.reshape %v5 :", "%v5b = stablehlo.add %v5, %v5 : tensor<1x6x8xf32>\n    %v7 = stablehlo.reshape %v5b :"))
+        }
+        assertContains(e.message!!, "cannot merge it")
     }
 
     @Test

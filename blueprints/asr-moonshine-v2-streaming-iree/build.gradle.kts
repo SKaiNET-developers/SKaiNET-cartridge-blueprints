@@ -156,14 +156,16 @@ for ((language, source) in flavors) {
         output.set(work.map { it.file("convert/$language/frontend_step-im2col.mlir") })
     }
     val useIm2col = selected.map { it.params["conv1d_im2col"] == "true" }
-    // convert (params.cross_kv_cache = "true") — prefill reads the cross K/V, the adapter computes them per window
+    // convert (params.cross_kv_cache = "true") — prefill reads the cross K/V; the encoder module gets a second function
+    // that computes them for a window of adapter rows (one matmul, on the encoder's device)
     val crossKv = tasks.register<CrossKvCacheTask>("crossKv$lang") {
         group = "cartridge blueprint steps"
         dependsOn(export)
         prefill.set(exportDir.map { it.file("prefill.mlir") })
         adapter.set(exportDir.map { it.file("adapter.mlir") })
+        encoder.set(exportDir.map { it.file("encoder.mlir") })
         prefillOutput.set(work.map { it.file("convert/$language/prefill-kv.mlir") })
-        adapterOutput.set(work.map { it.file("convert/$language/adapter-kv.mlir") })
+        encoderOutput.set(work.map { it.file("convert/$language/encoder-kv.mlir") })
     }
     val useCrossKv = selected.map { it.params["cross_kv_cache"] == "true" }
     // graphs whose large matrices go int8 (params.int8_weights = "encoder,adapter,…")
@@ -179,13 +181,13 @@ for ((language, source) in flavors) {
             "frontend" -> useIm2col.flatMap { if (it) im2col.flatMap { t -> t.output } else exportDir.map { d -> d.file("frontend.mlir") } }
             "frontend_step" -> useIm2col.flatMap { if (it) im2colStep.flatMap { t -> t.output } else exportStepDir.map { d -> d.file("frontend.mlir") } }
             "prefill" -> useCrossKv.flatMap { if (it) crossKv.flatMap { t -> t.prefillOutput } else exportDir.map { d -> d.file("prefill.mlir") } }
-            "adapter" -> useCrossKv.flatMap { if (it) crossKv.flatMap { t -> t.adapterOutput } else exportDir.map { d -> d.file("adapter.mlir") } }
+            "encoder" -> useCrossKv.flatMap { if (it) crossKv.flatMap { t -> t.encoderOutput } else exportDir.map { d -> d.file("encoder.mlir") } }
             else -> exportDir.map { it.file("$graph.mlir") }
         }
         val sourceTasks = when (graph) {
             "frontend" -> useIm2col.map { if (it) listOf(im2col) else emptyList() }
             "frontend_step" -> useIm2col.map { if (it) listOf(im2colStep) else listOf(exportStep) }
-            "prefill", "adapter" -> useCrossKv.map { if (it) listOf(crossKv) else emptyList() }
+            "prefill", "encoder" -> useCrossKv.map { if (it) listOf(crossKv) else emptyList() }
             else -> provider { emptyList() }
         }
 
