@@ -1,6 +1,6 @@
 name: release
 
-# A tag push publishes the cartridge artifacts to Maven Central:
+# A version tag push (semver: 0.2.3, 1.0.0) publishes the cartridge artifacts to Maven Central:
 #
 #   sk.ainet.cartridge.profiles:yolo-v1        — the yolo/v1 task-profile contract
 #   sk.ainet.cartridge:detection-yolov8-iree   — the blueprint's consumer library
@@ -15,7 +15,8 @@ name: release
 on:
   push:
     tags:
-      - '**'
+      # release tags only; other tags (e.g. a project milestone like hes-sl2610-v0.1.0) publish nothing
+      - '[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
 
 jobs:
