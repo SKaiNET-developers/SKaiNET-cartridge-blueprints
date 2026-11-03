@@ -59,7 +59,7 @@ class TorqBf16RewriteTest {
         assertContains(r.mlir, "%ones64 = stablehlo.constant dense<1.0> : tensor<64x64xbf16>")
         assertContains(r.mlir, "%v3_o = stablehlo.dot_general %arg0_16, %ones64, contracting_dims = [2] x [0] : (tensor<1x4x64xbf16>, tensor<64x64xbf16>) -> tensor<1x4x64xbf16>")
         assertContains(r.mlir, "%v4_v2c = stablehlo.constant dense<64.0> : tensor<1x4x64xbf16>")
-        assertContains(r.mlir, "%v4 = stablehlo.divide %v3, %v4_v2c : tensor<1x4x64xbf16>")
+        assertContains(r.mlir, "%v4_e = stablehlo.divide %v3, %v4_v2c : tensor<1x4x64xbf16>")
         assertContains(r.mlir, "%v7 = stablehlo.subtract %arg0_16, %v4 : tensor<1x4x64xbf16>")
         assertFalse(r.mlir.contains("%v5 = ") || r.mlir.contains("%v6 = "), "reshape and broadcast are gone")
         assertContains(r.mlir, "%v14 = stablehlo.reduce(%v12 init: %v13) applies stablehlo.maximum", message = "max stays a reduce")
@@ -79,7 +79,16 @@ class TorqBf16RewriteTest {
         assertContains(r.mlir, "func.func @enc(%arg0: tensor<1x4x64xf32>) -> (tensor<1x4x64xf32>, tensor<1x4x4x4xf32>)")
         val f32 = r.mlir.lines().filter { "xf32>" in it && "convert" !in it && "func.func" !in it && "return" !in it }
         assertEquals(emptyList(), f32, "no f32 left inside")
-        assertEquals(5, r.barriers)  // 3 matmul results, the head transpose, the K transpose
+        assertEquals(6, r.barriers)  // 3 matmul results, the head transpose, the K transpose, the mean (below)
+    }
+
+    @Test
+    fun `an elementwise op feeding another one gets a barrier, so each runs alone`() {
+        val r = TorqBf16Rewrite.rewrite(module)
+        assertContains(r.mlir, "%v4 = stablehlo.optimization_barrier %v4_e : tensor<1x4x64xbf16>")
+        assertContains(r.mlir, "%v7 = stablehlo.subtract %arg0_16, %v4 : tensor<1x4x64xbf16>")
+        assertFalse(r.mlir.contains("%v7_e = "), "the subtract feeds only a matmul")
+        assertFalse(r.mlir.contains("%v16_e = "), "the last subtract feeds only the output convert")
     }
 
     @Test

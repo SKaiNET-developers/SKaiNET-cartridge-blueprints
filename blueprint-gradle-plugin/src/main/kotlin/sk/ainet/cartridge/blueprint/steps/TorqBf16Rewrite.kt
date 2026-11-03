@@ -18,9 +18,12 @@ import sk.ainet.cartridge.blueprint.model.MaterializationException
  *    matmul and ignores a transpose fused before one; a transpose fused with a bf16 elementwise op asserts. A
  *    `dot_general` that contracts the last dimension of both operands (attention Q·Kᵀ) gets an explicit transpose of
  *    its right operand behind a barrier, so it is no longer transposed-B.
+ * 4. A barrier after every elementwise op that feeds another one: Torq runs an elementwise dispatch on the NPU only
+ *    when it holds a single op, and fused chains (layer norm, GELU, residual adds) on the host.
  *
  * Moonshine v2 tiny encoder on an SL2610, measured against its f32 CPU graph: cosine 0.9995, golden transcripts
- * identical, streaming RTF 0.74 (CPU, int8 weights: 0.77). Compile the output with [COMPILE_FLAGS].
+ * identical, 152 ms per 64-frame call (179 ms without step 4), streaming RTF 0.71 (CPU, int8 weights: 0.77).
+ * Compile the output with [COMPILE_FLAGS].
  *
  * Text-level on purpose, like [HostGatherRewrite]: reviewable next to the exported module.
  */
@@ -46,7 +49,8 @@ object TorqBf16Rewrite {
         )
         val (lifted, ns) = liftSums(weights)
         val (bf16, nb) = toBf16(lifted)
-        return Result(bf16.joinToString("\n"), nw, ns, nb)
+        val (split, ne) = splitElementwise(bf16)
+        return Result(split.joinToString("\n"), nw, ns, nb + ne)
     }
 
     private const val LONG = 4096  // longer lines are constant literals: no uses in them, never rewritten as ops
@@ -247,6 +251,42 @@ object TorqBf16Rewrite {
                 continue
             }
             out += l
+        }
+        return out to n
+    }
+
+    // ---- 4. one elementwise op per dispatch ------------------------------------------------------------------
+
+    private val ELEMENTWISE_OPS = setOf("add", "subtract", "multiply", "divide", "maximum", "negate", "sqrt", "rsqrt", "tanh", "exponential")
+    private val ELEMENTWISE = Regex("""^( *)(%[\w]+) = stablehlo\.(${ELEMENTWISE_OPS.joinToString("|")}) .* (tensor<[^>]+>)$""")
+    private val PASS_THROUGH = setOf("reshape", "broadcast_in_dim")  // IREE fuses elementwise ops across these
+    private val OP = Regex("""^ *(%[\w]+) = stablehlo\.(\w+)""")
+
+    /**
+     * A barrier after every elementwise op whose result feeds another elementwise op (directly or through a reshape
+     * or broadcast), so no dispatch holds two of them: Torq runs single-op bf16 elementwise dispatches on the NPU and
+     * fused ones on the host (`x * y + z` fused: host, 1.7 ms; split: two NPU dispatches, 0.3 ms each).
+     */
+    private fun splitElementwise(lines: List<String>): Pair<List<String>, Int> {
+        val op = HashMap<String, String>()
+        val users = HashMap<String, MutableList<String>>()
+        for (l in lines) if (l.length <= LONG) OP.find(l)?.let { m ->
+            op[m.groupValues[1]] = m.groupValues[2]
+            NAME.findAll(l.substringAfter(" = ")).map { it.value }.toSet().forEach { users.getOrPut(it, ::ArrayList) += m.groupValues[1] }
+        }
+        fun feedsElementwise(v: String): Boolean = users[v].orEmpty().any { u ->
+            val o = op[u]
+            o in ELEMENTWISE_OPS || o in PASS_THROUGH && feedsElementwise(u)
+        }
+        val out = ArrayList<String>(lines.size + 200)
+        var n = 0
+        for (l in lines) {
+            val m = if (l.length <= LONG) ELEMENTWISE.matchEntire(l) else null
+            if (m != null && feedsElementwise(m.groupValues[2])) {
+                val (ind, r, _, t) = m.destructured
+                out += l.replaceFirst("$r = ", "${r}_e = ")
+                out += "$ind$r = stablehlo.optimization_barrier ${r}_e : $t"; n++
+            } else out += l
         }
         return out to n
     }
