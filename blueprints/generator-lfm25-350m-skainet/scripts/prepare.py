@@ -19,6 +19,43 @@ import zipfile
 
 REVISION = "9e6c6ccf47cd318696e137d381a7ded8fe4df09f"
 MODEL_LICENSE = "LicenseRef-LFM-Open-License-1.0"
+CODE_LICENSE = "MIT"
+# EffectiveLicense.compute(blueprint license, upstream licenses) in the pinned plugin
+# deduplicates by first occurrence and turns non-SPDX tokens into LicenseRef- ids.
+EFFECTIVE_LICENSE = ("MIT AND LicenseRef-LFM-Open-License-1.0 AND Apache-2.0 AND "
+                     "LicenseRef-GPL-2.0-only-WITH-Classpath-exception-2.0")
+APACHE_2_JARS = (
+    "annotations-23.0.0.jar", "commons-math3-3.6.1.jar", "kotlin-stdlib-2.4.21.jar",
+    "kotlinx-benchmark-runtime-jvm-0.5.0.jar", "kotlinx-coroutines-core-jvm-1.11.0.jar",
+    "kotlinx-io-bytestring-jvm-0.9.1.jar", "kotlinx-io-core-jvm-0.9.1.jar",
+    "kotlinx-serialization-core-jvm-1.12.0.jar", "kotlinx-serialization-json-jvm-1.12.0.jar",
+)
+SKAINET_JARS = tuple(f"skainet-{name}-jvm-0.62.0.jar" for name in (
+    "backend-api", "backend-cpu", "compile-core", "compile-dag", "compile-hlo", "compile-opt",
+    "frontend-core", "frontend-text", "io-core", "io-gguf", "io-safetensors",
+    "lang-core", "lang-dag", "lang-ksp-annotations", "lang-models", "model-identity"))
+THIRD_PARTY_JAR_LICENSES = {
+    **{name: "Apache-2.0" for name in APACHE_2_JARS},
+    **{name: "MIT" for name in SKAINET_JARS},
+    "jopt-simple-5.0.4.jar": "MIT",
+    "jmh-core-1.37.jar": "GPL-2.0-only WITH Classpath-exception-2.0",
+}
+PROJECT_JARS = {"klfm2-jvm.jar", "lfm2-jvm.jar", "llm-core-jvm.jar", "transformer-core-jvm.jar"}
+PROJECT_JAR_PREFIXES = ("generator-lfm25-350m-skainet-", "llm-v1-jvm-")
+
+
+def artifact_license(path: str) -> str:
+    if path.startswith("artifacts/model/"):
+        return MODEL_LICENSE
+    if path.startswith("artifacts/jvm/lib/"):
+        name = PurePosixPath(path).name
+        known = THIRD_PARTY_JAR_LICENSES.get(name)
+        if known is not None:
+            return known
+        if name in PROJECT_JARS or name.startswith(PROJECT_JAR_PREFIXES):
+            return CODE_LICENSE
+        raise ValueError("Worker JAR without explicit license attribution: " + name)
+    return CODE_LICENSE
 MODEL_FILES = {
     "model.safetensors": (708984464, "1c9c77a4471a7f590f85240f74ed1fc26df7fbde88c3006724e2f93ca993ea4e"),
     "config.json": (1281, "720b43d6ddc2ed25be23eed355aefcf342434a176dedad23dbe0a5e3ac24bbb8"),
@@ -147,7 +184,7 @@ def descriptor_pair(raw: Path, compact: Path) -> dict:
                       allow_nan=False).encode("utf-8")
     if utf8 != compact_bytes:
         raise ValueError("This blueprint requires ASCII descriptor strings")
-    if value.get("performance") != PERFORMANCE or value.get("license") != "NOASSERTION":
+    if value.get("performance") != PERFORMANCE or value.get("license") != EFFECTIVE_LICENSE:
         raise ValueError("Unexpected descriptor performance provenance or license")
     if value.get("target", {}).get("abi") != "aarch64-linux-gnu":
         raise ValueError("Only the measured ARM64 Linux target is supported")
@@ -202,12 +239,12 @@ def finish_stage(pack: Path) -> None:
               "scope": "Exact provisional execution bytes; performance acceptance and final materialization are separate gates."}
     write_json(pack / "execution.json", record)
     manifest = {"schema_version": "evaluation-execution-v1", "kind": "unsigned-evaluation-stage",
-                "id": descriptor["id"], "version": descriptor["version"], "effective_license": "NOASSERTION",
+                "id": descriptor["id"], "version": descriptor["version"], "effective_license": EFFECTIVE_LICENSE,
                 "descriptor_digest": "sha256:" + sha(pack / CANONICAL), "digest_alg": "sha256",
                 "status": "unmeasured_provisional_execution", "signatures_present": False,
                 "artifacts": [{"role": role(item["file"]), "path": item["file"],
                                "digest": "sha256:" + item["sha256"], "size": item["size_bytes"],
-                               "license": MODEL_LICENSE if item["file"].startswith("artifacts/model/") else "NOASSERTION"}
+                               "license": artifact_license(item["file"])}
                               for item in artifacts],
                 "scope": "Staging metadata only; not a signed Cartridge Spec manifest."}
     write_json(pack / "manifest.json", manifest)
@@ -215,11 +252,15 @@ def finish_stage(pack: Path) -> None:
 
 def profile(args) -> None:
     blueprint = read(args.blueprint)
-    source, = blueprint["sources"]
+    sources = {item["name"]: item for item in blueprint["sources"]}
+    source = sources.pop("liquid-lfm25-350m")
     expected = {name: (size, digest) for name, (size, digest) in MODEL_FILES.items()}
     observed = {item["path"]: (item["size"], item["digest"].removeprefix("sha256:")) for item in source["files"]}
-    if observed != expected or source["revision"] != REVISION or blueprint["license"] != "NOASSERTION":
+    if observed != expected or source["revision"] != REVISION or blueprint["license"] != CODE_LICENSE:
         raise ValueError("Blueprint source/license pins changed")
+    pinned = {PurePosixPath(item["path"]).name for value in sources.values() for item in value["files"]}
+    if pinned != set(THIRD_PARTY_JAR_LICENSES):
+        raise ValueError("Blueprint third-party JAR pins differ from the license attribution table")
     model = args.model_dir.resolve(strict=True)
     verify_model(model)
     value = {"spec_version": "0.4", "kind": "materialization-profile",
@@ -308,7 +349,7 @@ def accepted(args) -> None:
         raise ValueError("Preview profile contains unsupported changes")
     value = copy.deepcopy(original)
     value["measurements"] = {"performance": validation["performance"], "quality": QUALITY}
-    value["inputs"] = {name: {"path": str(path.resolve(strict=True)), "digest": "sha256:" + sha(path), "license": "NOASSERTION"}
+    value["inputs"] = {name: {"path": str(path.resolve(strict=True)), "digest": "sha256:" + sha(path), "license": CODE_LICENSE}
                        for name, path in (("native-benchmark", benchmark), ("benchmark-supervisor", supervisor),
                                           ("native-measurement-validation", args.validation))}
     write_json(args.output, value)
@@ -336,8 +377,8 @@ def verify_materialized(args) -> None:
         verify(args.pack / relative, expected_report)
     descriptor_pair(args.pack / "descriptor.json", args.execution / CANONICAL)
     manifest = read(args.pack / "manifest.json")
-    if "signatures" in manifest or manifest.get("effective_license") != "NOASSERTION":
-        raise ValueError("This evaluation recipe expects an explicitly unsigned NOASSERTION diagnostic")
+    if "signatures" in manifest or manifest.get("effective_license") != EFFECTIVE_LICENSE:
+        raise ValueError("This evaluation recipe expects an explicitly unsigned diagnostic with the computed effective license")
     manifest_paths = set()
     for item in manifest["artifacts"]:
         name = item["path"]

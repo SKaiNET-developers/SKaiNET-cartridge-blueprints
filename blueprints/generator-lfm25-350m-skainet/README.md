@@ -9,10 +9,16 @@ claim in this recipe.
 
 The source tree includes no weights, compiled graphs, native libraries, acquired
 license acceptance or signing keys. Build products remain private. The recipe's
-`NOASSERTION` license marks pending package/dependency license remediation, even
-though the source contribution follows this repository's MIT license. The
-materializer output is an **unsigned diagnostic**, with no full conformance or
-production-cartridge claim.
+own license is `MIT` (this repository's license); every third-party worker JAR is
+declared as a digest-pinned Maven Central source with its verified license, so the
+computed effective license is
+`MIT AND LicenseRef-LFM-Open-License-1.0 AND Apache-2.0 AND
+LicenseRef-GPL-2.0-only-WITH-Classpath-exception-2.0`. The GPL-2.0-with-
+Classpath-exception term comes only from `jmh-core` (pulled by
+`kotlinx-benchmark-runtime` into the measured worker closure); dropping the
+benchmark harness from the shipped distribution at the next re-qualification
+removes it. The materializer output is an **unsigned diagnostic**, with no full
+conformance or production-cartridge claim.
 
 The adapter, persistent worker, native bridge and their tests now live once in
 `:runtimes:lfm2-jvm` and are reused by the Vulkan source recipe. Earlier CPU target

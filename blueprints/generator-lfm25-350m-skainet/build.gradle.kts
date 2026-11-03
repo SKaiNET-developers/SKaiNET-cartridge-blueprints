@@ -40,10 +40,14 @@ abstract class ResolveNativeDescriptors : DefaultTask() {
         val bp = Documents.blueprint(recipe.get().asFile)
         val pf = Documents.profile(previewProfile.get().asFile)
         Documents.requireMatch(bp, pf)
-        // EffectiveLicense.compute is necessarily NOASSERTION when the recipe's
-        // own license is NOASSERTION, whatever the model/input component licenses.
-        require(bp.value.license == "NOASSERTION")
-        val descriptor = DescriptorResolver.resolve(bp.value, pf.value, "NOASSERTION")
+        // The pinned plugin computes the effective license from the recipe license and
+        // each output's upstream source/input licenses: first-occurrence order, non-SPDX
+        // tokens rewritten to LicenseRef- ids. This literal must match the Materializer's
+        // own computation and EFFECTIVE_LICENSE in scripts/prepare.py.
+        require(bp.value.license == "MIT")
+        val effectiveLicense = "MIT AND LicenseRef-LFM-Open-License-1.0 AND Apache-2.0 AND " +
+            "LicenseRef-GPL-2.0-only-WITH-Classpath-exception-2.0"
+        val descriptor = DescriptorResolver.resolve(bp.value, pf.value, effectiveLicense)
         val raw = Documents.json.encodeToString(JsonObject.serializer(), descriptor) + "\n"
         require(raw.all { it.code < 128 }) { "This bridge recipe requires ASCII descriptor content" }
         val compact = CanonicalJson.encode(descriptor)

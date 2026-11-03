@@ -3,8 +3,8 @@
   "kind": "blueprint",
   "id": "generator-lfm25-350m-skainet",
   "version": "0.1.0-eval",
-  "description": "Source-built POSIX Runtime ABI and persistent eager CPU JVM llm/v1 worker for LFM2.5-350M. New materializations require exact-artifact measurement evidence. Unsigned evaluation outputs remain NOASSERTION until dependency licensing and signing are supplied.",
-  "license": "NOASSERTION",
+  "description": "Source-built POSIX Runtime ABI and persistent eager CPU JVM llm/v1 worker for LFM2.5-350M. New materializations require exact-artifact measurement evidence. Recipe code is MIT; third-party JVM dependencies are declared as digest-pinned sources. Outputs remain unsigned diagnostics until signing and full conformance are supplied.",
+  "license": "MIT",
   "descriptor_template": {
     "family": "lfm2-hybrid",
     "execution_mode": "eager",
@@ -252,6 +252,185 @@
       "license": "LicenseRef-LFM-Open-License-1.0",
       "license_url": "https://huggingface.co/LiquidAI/LFM2.5-350M/blob/9e6c6ccf47cd318696e137d381a7ded8fe4df09f/LICENSE",
       "redistribution": "restricted"
+    },
+    {
+      "name": "skainet-engine-0.62.0",
+      "role": "other",
+      "uri": "https://repo.maven.apache.org/maven2",
+      "revision": "release-artifacts-pinned-by-digest",
+      "files": [
+        {
+          "path": "sk/ainet/core/skainet-backend-api-jvm/0.62.0/skainet-backend-api-jvm-0.62.0.jar",
+          "digest": "sha256:32797d46dc1a7e78e510b43cdd639149c4bbbd34cf3d6317b587bff626f27338",
+          "size": 125795
+        },
+        {
+          "path": "sk/ainet/core/skainet-backend-cpu-jvm/0.62.0/skainet-backend-cpu-jvm-0.62.0.jar",
+          "digest": "sha256:ae9f2cfbfe00edc91e4feab15ddb827193ed3ce774469f28715a0a75b823abec",
+          "size": 290843
+        },
+        {
+          "path": "sk/ainet/core/skainet-compile-core-jvm/0.62.0/skainet-compile-core-jvm-0.62.0.jar",
+          "digest": "sha256:c188eb8016c448f11a36609da8712620dbb6044183ae963eb35aafbf10430392",
+          "size": 89479
+        },
+        {
+          "path": "sk/ainet/core/skainet-compile-dag-jvm/0.62.0/skainet-compile-dag-jvm-0.62.0.jar",
+          "digest": "sha256:f5052b5cffe5bc9c7b99aa73c9418b74cf3791c77870f52ba7c6583b481b8d50",
+          "size": 250718
+        },
+        {
+          "path": "sk/ainet/core/skainet-compile-hlo-jvm/0.62.0/skainet-compile-hlo-jvm-0.62.0.jar",
+          "digest": "sha256:01f6196147f5b5a06bce83c496ed1de5da48baabd53b85fc46d7deda874cfe82",
+          "size": 342631
+        },
+        {
+          "path": "sk/ainet/core/skainet-compile-opt-jvm/0.62.0/skainet-compile-opt-jvm-0.62.0.jar",
+          "digest": "sha256:84fca4f0954862f777e140c91029a5e969f5fe778568994d11ed80c2ae5f2010",
+          "size": 97423
+        },
+        {
+          "path": "sk/ainet/core/skainet-frontend-core-jvm/0.62.0/skainet-frontend-core-jvm-0.62.0.jar",
+          "digest": "sha256:2b75ac8fed11d01aec6867a870f0a320958011f51a43b6e5911ad6ec8b8a49ba",
+          "size": 99085
+        },
+        {
+          "path": "sk/ainet/core/skainet-frontend-text-jvm/0.62.0/skainet-frontend-text-jvm-0.62.0.jar",
+          "digest": "sha256:aa824a20cd9a215bcddcf4dcecfc01f372a2da113242693351820bddcf794481",
+          "size": 181958
+        },
+        {
+          "path": "sk/ainet/core/skainet-io-core-jvm/0.62.0/skainet-io-core-jvm-0.62.0.jar",
+          "digest": "sha256:8741fcb5d362028db51c3c99f4f598449db79ec0da323d8c546a2e96ad874465",
+          "size": 154761
+        },
+        {
+          "path": "sk/ainet/core/skainet-io-gguf-jvm/0.62.0/skainet-io-gguf-jvm-0.62.0.jar",
+          "digest": "sha256:e44ce87101418cdecb4e5839d58edcb91ff2fce2c0f3d1982dee6c868ccc7ae7",
+          "size": 275205
+        },
+        {
+          "path": "sk/ainet/core/skainet-io-safetensors-jvm/0.62.0/skainet-io-safetensors-jvm-0.62.0.jar",
+          "digest": "sha256:d380179804b4efecfaeab6001d7dd29c334648159e2a44d2b95effd425045147",
+          "size": 125986
+        },
+        {
+          "path": "sk/ainet/core/skainet-lang-core-jvm/0.62.0/skainet-lang-core-jvm-0.62.0.jar",
+          "digest": "sha256:a3316b72c7a3ad7d4fdce119fcbfa3c21314844630dde8eaa9b9d153f3d4e4e7",
+          "size": 1672689
+        },
+        {
+          "path": "sk/ainet/core/skainet-lang-dag-jvm/0.62.0/skainet-lang-dag-jvm-0.62.0.jar",
+          "digest": "sha256:507e75c2cea0dc759bbfef7261dd3f924ef0c505fabacb830ddbc08cb5a71602",
+          "size": 65750
+        },
+        {
+          "path": "sk/ainet/core/skainet-lang-ksp-annotations-jvm/0.62.0/skainet-lang-ksp-annotations-jvm-0.62.0.jar",
+          "digest": "sha256:ca15f41b68284f80df36d189632078178ec06c9b050c98be5d1f5cd9d0c0c069",
+          "size": 12250
+        },
+        {
+          "path": "sk/ainet/core/skainet-lang-models-jvm/0.62.0/skainet-lang-models-jvm-0.62.0.jar",
+          "digest": "sha256:da9d05a0d53b088da18b6cd61aa37604d7e2044dad1ee089f8555dd61bec72c7",
+          "size": 88336
+        },
+        {
+          "path": "sk/ainet/core/skainet-model-identity-jvm/0.62.0/skainet-model-identity-jvm-0.62.0.jar",
+          "digest": "sha256:a0213424c301eef1c43f26a7d7c34f8dd4da910f550b346c6f310cf5c8a3c42d",
+          "size": 43317
+        }
+      ],
+      "license": "MIT",
+      "license_url": "https://github.com/SKaiNET-developers/SKaiNET/blob/main/LICENCE",
+      "redistribution": "allowed"
+    },
+    {
+      "name": "jopt-simple-5.0.4",
+      "role": "other",
+      "uri": "https://repo.maven.apache.org/maven2",
+      "revision": "release-artifacts-pinned-by-digest",
+      "files": [
+        {
+          "path": "net/sf/jopt-simple/jopt-simple/5.0.4/jopt-simple-5.0.4.jar",
+          "digest": "sha256:df26cc58f235f477db07f753ba5a3ab243ebe5789d9f89ecf68dd62ea9a66c28",
+          "size": 78146
+        }
+      ],
+      "license": "MIT",
+      "license_url": "https://www.opensource.org/licenses/mit-license.php",
+      "redistribution": "allowed"
+    },
+    {
+      "name": "jvm-deps-apache-2.0",
+      "role": "other",
+      "uri": "https://repo.maven.apache.org/maven2",
+      "revision": "release-artifacts-pinned-by-digest",
+      "files": [
+        {
+          "path": "org/jetbrains/annotations/23.0.0/annotations-23.0.0.jar",
+          "digest": "sha256:7b0f19724082cbfcbc66e5abea2b9bc92cf08a1ea11e191933ed43801eb3cd05",
+          "size": 29371
+        },
+        {
+          "path": "org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar",
+          "digest": "sha256:1e56d7b058d28b65abd256b8458e3885b674c1d588fa43cd7d1cbb9c7ef2b308",
+          "size": 2213560
+        },
+        {
+          "path": "org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21.jar",
+          "digest": "sha256:bd8250210584cb659847dce9cda660f8e9906e5def7fbebcea93dc6dcb6a88a3",
+          "size": 1853315
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-benchmark-runtime-jvm/0.5.0/kotlinx-benchmark-runtime-jvm-0.5.0.jar",
+          "digest": "sha256:f44154d4f11bdca7fab7aa519e0d51df4fe3bb959f3177a42ef5603f30f49a63",
+          "size": 104145
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.11.0/kotlinx-coroutines-core-jvm-1.11.0.jar",
+          "digest": "sha256:d1d75aa01dffbb4d1c520e67e4c4e7f5f6174718e7cb4632412503f2f0e604fa",
+          "size": 1577052
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-io-bytestring-jvm/0.9.1/kotlinx-io-bytestring-jvm-0.9.1.jar",
+          "digest": "sha256:8589de0b7c476bfdd02a24641685f609ade72f5e595cf2909c168acdba7e6ba4",
+          "size": 22776
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-io-core-jvm/0.9.1/kotlinx-io-core-jvm-0.9.1.jar",
+          "digest": "sha256:765d8851d8ca694706931331b92386844800867e041b720f1f193dbda874d370",
+          "size": 153576
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.12.0/kotlinx-serialization-core-jvm-1.12.0.jar",
+          "digest": "sha256:bcfddcac76159058ba0953af05938c17111d238cd41be7191874656454d62f1a",
+          "size": 416396
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.12.0/kotlinx-serialization-json-jvm-1.12.0.jar",
+          "digest": "sha256:879eb73e46cb63253ab0fa7cca4448f5c96bca1a16ff377abcb71ebab60e0631",
+          "size": 306230
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
+      "redistribution": "allowed"
+    },
+    {
+      "name": "jmh-core-1.37",
+      "role": "other",
+      "uri": "https://repo.maven.apache.org/maven2",
+      "revision": "release-artifacts-pinned-by-digest",
+      "files": [
+        {
+          "path": "org/openjdk/jmh/jmh-core/1.37/jmh-core-1.37.jar",
+          "digest": "sha256:dc0eaf2bbf0036a70b60798c785d6e03a9daf06b68b8edb0f1ba9eb3421baeb3",
+          "size": 552986
+        }
+      ],
+      "license": "GPL-2.0-only WITH Classpath-exception-2.0",
+      "license_url": "https://github.com/openjdk/jmh/blob/master/LICENSE",
+      "redistribution": "allowed"
     }
   ],
   "inputs": [
@@ -470,7 +649,12 @@
       "from": "worker-jars",
       "role": "other",
       "path": "artifacts/jvm/lib/",
-      "derived_from": []
+      "derived_from": [
+        "skainet-engine-0.62.0",
+        "jopt-simple-5.0.4",
+        "jvm-deps-apache-2.0",
+        "jmh-core-1.37"
+      ]
     },
     {
       "from": "worker-config",

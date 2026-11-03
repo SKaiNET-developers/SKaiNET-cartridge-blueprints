@@ -32,7 +32,7 @@ class PreparationTests(unittest.TestCase):
         self.addCleanup(pin_patch.stop)
         self.raw = self.root / "descriptor.json"
         self.compact = self.root / "canonical.json"
-        self.descriptor = {"id": "test-native-linux-aarch64", "version": "0.1.0-eval", "license": "NOASSERTION",
+        self.descriptor = {"id": "test-native-linux-aarch64", "version": "0.1.0-eval", "license": m.EFFECTIVE_LICENSE,
                            "performance": m.PERFORMANCE, "target": {"abi": "aarch64-linux-gnu"}}
         m.write_json(self.raw, self.descriptor)
         self.compact.write_bytes(m.canonical(self.descriptor))
@@ -45,7 +45,7 @@ class PreparationTests(unittest.TestCase):
                                  "sources": [{"file": "bridge.cpp", "sha256": "test-fixture"}]})
         self.jars = self.root / "lib"
         self.jars.mkdir()
-        with zipfile.ZipFile(self.jars / "worker.jar", "w") as jar:
+        with zipfile.ZipFile(self.jars / "klfm2-jvm.jar", "w") as jar:
             jar.writestr("sk/ainet/cartridge/generator/lfm2/worker/MainKt.class", b"test fixture")
         self.compiler = self.root / "compiler.json"
         m.write_json(self.compiler, {"test": "fixture"})
@@ -102,17 +102,17 @@ class PreparationTests(unittest.TestCase):
 
     def test_later_build_output_overwrite_cannot_mutate_staged_jar(self):
         execution = self.prepare()
-        staged = execution / "artifacts/jvm/lib/worker.jar"
+        staged = execution / "artifacts/jvm/lib/klfm2-jvm.jar"
         original = staged.read_bytes()
-        (self.jars / "worker.jar").write_bytes(b"new installDist output")
+        (self.jars / "klfm2-jvm.jar").write_bytes(b"new installDist output")
         self.assertEqual(staged.read_bytes(), original)
         record = next(item for item in m.read(execution / "execution.json")["pack_files"]
-                      if item["file"] == "artifacts/jvm/lib/worker.jar")
+                      if item["file"] == "artifacts/jvm/lib/klfm2-jvm.jar")
         m.verify(staged, record)
 
     def test_changed_transported_jar_fails_and_preserves_attempt(self):
         execution = self.prepare()
-        (execution / "artifacts/jvm/lib/worker.jar").write_bytes(b"changed")
+        (execution / "artifacts/jvm/lib/klfm2-jvm.jar").write_bytes(b"changed")
         staged = self.root / "bad-device-pack"
         with self.assertRaisesRegex(ValueError, "Artifact identity mismatch"):
             m.stage(argparse.Namespace(execution=execution, model_dir=self.model, output=staged))
@@ -164,7 +164,7 @@ class PreparationTests(unittest.TestCase):
             shutil.copyfile(accepted["inputs"][name]["path"], pack / relative)
 
         def refresh_manifest():
-            mfest = {"effective_license": "NOASSERTION", "descriptor_digest": "sha256:" + m.sha(execution / m.CANONICAL),
+            mfest = {"effective_license": m.EFFECTIVE_LICENSE, "descriptor_digest": "sha256:" + m.sha(execution / m.CANONICAL),
                      "artifacts": [{"path": item["file"], "role": m.role(item["file"]),
                                     "digest": "sha256:" + item["sha256"], "size": item["size_bytes"]}
                                    for item in m.closure(pack)]}
