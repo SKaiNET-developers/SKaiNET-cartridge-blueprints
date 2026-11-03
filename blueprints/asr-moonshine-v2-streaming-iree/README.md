@@ -16,7 +16,7 @@ materialize it into a cartridge with *your* profile.
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, pack locator and language selection are common code; a **runtime binding exists for Android** (see *Platforms*) |
 | Flavors | `en`, `de` — one language per flavor; a profile selects one or both |
-| Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`); `cpu-sl26xx` (Linux aarch64, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules); `torq-sl26xx` (the same, with the encoder on the Torq NPU) |
+| Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`); `cpu-sl26xx` (Linux aarch64, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules); `torq-sl26xx` (the same, with the frontend and the encoder on the Torq NPU); `torq-sl26xx-encoder-cpu` (only the frontend on the NPU, the encoder int8 × int8 on the CPU) |
 | Toolchain | SKaiNET 0.61.0, SKaiNET-transformers 0.62.2 (exporter), 0.63.1 (runtime: incremental frontend), IREE tools 3.11.0 |
 
 ## What you will build
@@ -141,6 +141,14 @@ has to place both graphs on the `torq` device. With `cross_kv_cache` as well, pr
 after the last sample (was ~580 ms). `int8_activations = "with_past"` then takes a decoder step from 29 to 17 ms
 (finals identical on the 12 test clips): real-time factor 0.35, final ~360 ms after the last sample. With prefill in
 the list as well, 2 of the 12 finals changed, so it stays weight-only.
+
+`torq-sl26xx-encoder-cpu` is the same pack with the encoder (and the cross-K/V function in its module) back on the
+CPU, int8 × int8 (`npu_graphs = "frontend"`, `int8_activations = "encoder,with_past"`). On the NPU the encoder is
+dominated by per-dispatch runtime work and host-fallback transposes (137 ms per 64-frame call); on the A55 with the
+dot-product ukernel it takes 42 ms. The real-time factor goes from 0.36 to 0.25 and the final arrives ~280 ms after
+the last sample (was ~370 ms), but the encoder is less exact (cosine 0.9987 against its f32 graph, NPU bf16:
+0.9996): 11 of the 12 finals are identical, the 12th has different (fewer) word errors. Both are kept so they can be
+compared on more audio.
 
 ## Step 6 — Runtime, measure, pack, sign
 

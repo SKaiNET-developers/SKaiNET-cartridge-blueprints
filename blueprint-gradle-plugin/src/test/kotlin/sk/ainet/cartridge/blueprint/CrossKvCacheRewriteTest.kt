@@ -81,15 +81,16 @@ class CrossKvCacheRewriteTest {
     }
 
     @Test
-    fun `the encoder module gets one matmul from adapter rows to every K and V, weights side by side`() {
+    fun `the encoder module gets one matmul from adapter rows to every K and V, weights stacked and read transposed`() {
         val (_, _, enc) = run()
         assertContains(enc, "func.func @enc(%arg0: tensor<1x2x8xf32>) -> (tensor<1x2x8xf32>) {")
         assertContains(enc, "func.func @adp_cross_kv(%arg0: tensor<1x2x8xf32>) -> (tensor<1x2x16xf32>) {")
-        // row i: K columns W[i][o] = c[o][i] = 8 o + i, then the V weight's splat 2.0
-        val k0 = (0 until 8).joinToString(", ") { o -> "${8 * o}.0" }
-        assertContains(enc, "%xkv_w = stablehlo.constant dense<[[$k0, ${List(8) { "2.0" }.joinToString(", ")}], [1.0, 9.0,")
-        assertContains(enc, "]]> : tensor<8x16xf32>")
-        assertContains(enc, "%xkv = stablehlo.dot_general %arg0, %xkv_w, contracting_dims = [2] x [0] : (tensor<1x2x8xf32>, tensor<8x16xf32>) -> tensor<1x2x16xf32>")
+        // [out, in]: K rows o = c[o][·] = 8 o + i, then the V weight's splat 2.0 rows; read transposed
+        val k0 = (0 until 8).joinToString(", ") { i -> "$i.0" }
+        assertContains(enc, "%xkv_w = stablehlo.constant dense<[[$k0], [8.0, 9.0,")
+        assertContains(enc, "[${List(8) { "2.0" }.joinToString(", ")}]]> : tensor<16x8xf32>")
+        assertContains(enc, "%xkv_t = stablehlo.transpose %xkv_w, dims = [1, 0] : (tensor<16x8xf32>) -> tensor<8x16xf32>")
+        assertContains(enc, "%xkv = stablehlo.dot_general %arg0, %xkv_t, contracting_dims = [2] x [0] : (tensor<1x2x8xf32>, tensor<8x16xf32>) -> tensor<1x2x16xf32>")
         assertContains(enc, "return %xkv : tensor<1x2x16xf32>\n  }\n}")
     }
 

@@ -278,6 +278,38 @@
         "int8_activations": "with_past",
         "torq_hw": "SL2610"
       }
+    },
+    {
+      "id": "torq-sl26xx-encoder-cpu",
+      "target": {
+        "hardware": "IREE-linux-aarch64 (Synaptics SL26xx, Cortex-A55 + Torq NPU)",
+        "abi": "linux-aarch64",
+        "accelerator": "Synaptics Torq NPU (SL2610)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 1900,
+        "driver": {
+          "name": "Torq-fork IREE runtime",
+          "min_version": ">=2.3.0 <2.4",
+          "note": "modules come from the Torq 2.3.0 compiler; the app links the matching runtime (torq driver for the frontend, local-task for the rest)"
+        },
+        "os": {
+          "name": "linux"
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "linux-arm64",
+        "device": "local-task",
+        "toolchain": "iree-tools-torq",
+        "conv1d_im2col": "true",
+        "int8_weights": "encoder,adapter,prefill,with_past",
+        "npu_graphs": "frontend",
+        "cross_kv_cache": "true",
+        "int8_activations": "encoder,with_past",
+        "torq_hw": "SL2610"
+      }
     }
   ],
   "flavors": [
@@ -469,7 +501,7 @@
         "de-prefill-kv-mlir",
         "de-encoder-kv-mlir"
       ],
-      "description": "Only for targets with params.cross_kv_cache = \"true\" (torq-sl26xx), whose runtime keeps a cross-K/V cache: the per-row cross-attention K/V projections leave prefill, which ran them over all 256 padded memory rows on every restart, and prefill reads the cached K/V instead of the memory (one argument per layer and side, in the order it returned them). The encoder module gets a second function, moonshine_v2_cross_kv: all of them as one matmul over a window of adapter rows ([1, 64, 320] -> [1, 64, 12*320], the weights side by side), on the encoder's device, run once per window. The adapter and the decoder-step graph are unchanged. On an SL2610 (en, torq-sl26xx, K/V on the NPU): finals identical on 12 golden clips, prefill 166 -> 32 ms per call, K/V 4.5 ms per window, streaming RTF 0.56 -> 0.44, finish latency 581 -> 453 ms."
+      "description": "Only for targets with params.cross_kv_cache = \"true\" (torq-sl26xx), whose runtime keeps a cross-K/V cache: the per-row cross-attention K/V projections leave prefill, which ran them over all 256 padded memory rows on every restart, and prefill reads the cached K/V instead of the memory (one argument per layer and side, in the order it returned them). The encoder module gets a second function, moonshine_v2_cross_kv: all of them as one matmul over a window of adapter rows ([1, 64, 320] -> [1, 64, 12*320], the weights stacked as one [12*320, 320] matrix read transposed), on the encoder's device, run once per window. The adapter and the decoder-step graph are unchanged. On an SL2610 (en, torq-sl26xx, K/V on the NPU): finals identical on 12 golden clips, prefill 166 -> 32 ms per call, K/V 4.5 ms per window, streaming RTF 0.56 -> 0.44, finish latency 581 -> 453 ms."
     },
     {
       "id": "compile",

@@ -17,7 +17,7 @@ import java.io.Writer
  *   graph returned them (layer 0 K, layer 0 V, …); the cone, its weights and those outputs are dropped.
  * - encoder module: gets a second function, `<prefix>cross_kv` (the adapter's name with `adapter` replaced), from the
  *   adapter's output (`[1, C, D]`, C = window rows) to `[1, C, n·H·d]`: all n K/V projections as one matmul, their
- *   weights side by side, output j in columns `[j·H·d, (j+1)·H·d)`, head h of it at `h·d`. Each cone output must be
+ *   weights stacked as one `[n·H·d, D]` constant read transposed (the exporter's form), output j in columns `[j·H·d, (j+1)·H·d)`, head h of it at `h·d`. Each cone output must be
  *   `reshape(transpose(reshape(dot_general(memory, W)), [1, 0, 2]))` with a constant W (or its transpose).
  *
  * One matmul instead of n, and no head transposes: on the Torq NPU those run as host fallback, and the adapter's
@@ -129,8 +129,9 @@ object CrossKvCacheRewrite {
         if (projections.any { it.inputs != dim }) throw MaterializationException("cross-kv: a K/V weight does not take $dim inputs")
         val width = projections.sumOf { it.outputs }
 
-        // the weights side by side: merged[i][offset_j + o] = W_j[i][o]
-        val merged = FloatArray(dim * width)
+        // the weights stacked as one [out, in] matrix, read transposed like every exported weight (so int8-weights
+        // scales it per output and int8 x int8 can apply those scales after the matmul): merged[offset_j + o][i] = W_j[i][o]
+        val merged = FloatArray(width * dim)
         val offsets = projections.runningFold(0) { a, p -> a + p.outputs }
         val byName = projections.withIndex().groupBy({ it.value.weight }, { it.index })
         prefill.bufferedReader().useLines { lines ->
@@ -142,7 +143,7 @@ object CrossKvCacheRewrite {
                     val (r, c) = if (p.transposed) p.outputs to p.inputs else p.inputs to p.outputs
                     val w = constantValues(l, d.groupValues[2], r, c)
                     for (i in 0 until dim) for (o in 0 until p.outputs)
-                        merged[i * width + offsets[j] + o] = if (p.transposed) w[o * dim + i] else w[i * p.outputs + o]
+                        merged[(offsets[j] + o) * dim + i] = if (p.transposed) w[o * dim + i] else w[i * p.outputs + o]
                 }
             }
         }
@@ -152,20 +153,22 @@ object CrossKvCacheRewrite {
         if (close < 0 || text.none { SIG.matchEntire(it) != null }) throw MaterializationException("cross-kv: cannot read ${encoder.name}")
         val inT = "tensor<1x${window}x${dim}xf32>"
         val outT = "tensor<1x${window}x${width}xf32>"
-        val wT = "tensor<${dim}x${width}xf32>"
+        val wT = "tensor<${width}x${dim}xf32>"
+        val tT = "tensor<${dim}x${width}xf32>"
         out.parentFile.mkdirs()
         out.bufferedWriter().use { w ->
             for (i in 0 until close) w.line(text[i])
             w.line("  func.func @$function(%arg0: $inT) -> ($outT) {")
             w.write("    %xkv_w = stablehlo.constant dense<[")
-            for (i in 0 until dim) {
-                if (i > 0) w.write(", ")
+            for (o in 0 until width) {
+                if (o > 0) w.write(", ")
                 w.write("[")
-                for (o in 0 until width) { if (o > 0) w.write(", "); w.write(merged[i * width + o].toString()) }
+                for (i in 0 until dim) { if (i > 0) w.write(", "); w.write(merged[o * dim + i].toString()) }
                 w.write("]")
             }
             w.line("]> : $wT")
-            w.line("    %xkv = stablehlo.dot_general %arg0, %xkv_w, contracting_dims = [2] x [0] : ($inT, $wT) -> $outT")
+            w.line("    %xkv_t = stablehlo.transpose %xkv_w, dims = [1, 0] : ($wT) -> $tT")
+            w.line("    %xkv = stablehlo.dot_general %arg0, %xkv_t, contracting_dims = [2] x [0] : ($inT, $tT) -> $outT")
             w.line("    return %xkv : $outT")
             w.line("  }")
             for (i in close until text.size) w.line(text[i])
