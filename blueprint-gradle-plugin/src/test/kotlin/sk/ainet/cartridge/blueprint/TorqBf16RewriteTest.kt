@@ -91,6 +91,42 @@ class TorqBf16RewriteTest {
         assertFalse(r.mlir.contains("%v16_e = "), "the last subtract feeds only the output convert")
     }
 
+    // w[o][i][k] = (64 o + 4 i + k) mod 7 - 3
+    private val convWeight = (0 until 16).joinToString(", ", "[", "]") { o ->
+        (0 until 16).joinToString(", ", "[", "]") { i -> (0 until 4).joinToString(", ", "[", "]") { k -> "${(64 * o + 4 * i + k) % 7 - 3}.0" } }
+    }
+
+    // The frontend's patterns in small: a strided conv as im2col (slices, concatenate, weight transpose + reshape),
+    // its activation, and the transpose back to time-major.
+    private val conv = """
+        module {
+          func.func @fe(%arg0: tensor<16x9xf32>) -> (tensor<3x16xf32>) {
+            %v0 = stablehlo.constant dense<$convWeight> : tensor<16x16x4xf32>
+${(0 until 4).joinToString("\n") { k -> "            %s$k = \"stablehlo.slice\"(%arg0) {start_indices = array<i64: 0, $k>, limit_indices = array<i64: 16, ${k + 5}>, strides = array<i64: 1, 2>} : (tensor<16x9xf32>) -> tensor<16x3xf32>" }}
+            %col = stablehlo.concatenate %s0, %s1, %s2, %s3, dim = 0 : (tensor<16x3xf32>, tensor<16x3xf32>, tensor<16x3xf32>, tensor<16x3xf32>) -> tensor<64x3xf32>
+            %wt = stablehlo.transpose %v0, dims = [0, 2, 1] : (tensor<16x16x4xf32>) -> tensor<16x4x16xf32>
+            %w = stablehlo.reshape %wt : (tensor<16x4x16xf32>) -> tensor<16x64xf32>
+            %y = stablehlo.dot_general %w, %col, contracting_dims = [1] x [0] : (tensor<16x64xf32>, tensor<64x3xf32>) -> tensor<16x3xf32>
+            %m = stablehlo.multiply %y, %y : tensor<16x3xf32>
+            %t = stablehlo.transpose %m, dims = [1, 0] : (tensor<16x3xf32>) -> tensor<3x16xf32>
+            return %t : tensor<3x16xf32>
+          }
+        }
+    """.trimIndent() + "\n"
+
+    @Test
+    fun `an im2col conv weight becomes its folded bf16 matrix, strided slices and transposes get barriers`() {
+        val r = TorqBf16Rewrite.rewrite(conv)
+        assertEquals(1, r.weightMatmuls)
+        // [o, k*16 + i] = w[o][i][k]: row 0 starts w[0][0][0] = -3, w[0][1][0] = 1, w[0][2][0] = -2
+        assertContains(r.mlir, "%w = stablehlo.constant dense<\"0x40C0803F00C0")
+        assertContains(r.mlir, "> : tensor<16x64xbf16>")
+        assertFalse(r.mlir.contains("%wt = ") || r.mlir.contains("16x16x4x"), "the 3-D weight and its transpose are gone")
+        assertContains(r.mlir, "%s0 = stablehlo.optimization_barrier %s0_s : tensor<16x3xbf16>")
+        assertContains(r.mlir, "%m = stablehlo.optimization_barrier %m_e : tensor<16x3xbf16>")
+        assertContains(r.mlir, "%t = stablehlo.optimization_barrier %t_t : tensor<3x16xbf16>")
+    }
+
     @Test
     fun `a row sum used by an op that cannot move to the full shape is refused`() {
         val broken = module.replace("%v4 = stablehlo.divide %v3, %v2 : tensor<1x4xf32>", "%v4 = stablehlo.divide %v3, %v2 : tensor<1x4xf32>\n    %v4b = stablehlo.maximum %v4, %v2 : tensor<1x4xf32>")
@@ -101,6 +137,6 @@ class TorqBf16RewriteTest {
     @Test
     fun `a module without weight matmuls is refused`() {
         val e = assertFailsWith<MaterializationException> { TorqBf16Rewrite.rewrite(module.replace("%v9 = stablehlo.dot_general %v7, %v8,", "%v9 = stablehlo.dot_general %v7, %v7,")) }
-        assertContains(e.message!!, "no `dot_general %a, transpose(constant)` found")
+        assertContains(e.message!!, "no `dot_general` with a constant operand found")
     }
 }

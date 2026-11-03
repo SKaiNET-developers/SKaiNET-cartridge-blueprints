@@ -108,18 +108,20 @@ Three `convert` rewrites run before the compile when the target asks for them:
   int8 inside the `.vmfb`. When both decoder graphs are listed they read no parameter archive, so the archive is
   neither compiled against nor packed (86 MB less for the English flavor).
 
-- `params.npu_graphs = "encoder"` (the graphs to run on the Torq NPU, not also in `int8_weights`): the whole graph in
+- `params.npu_graphs = "frontend,encoder"` (the graphs to run on the Torq NPU, not also in `int8_weights`): the whole graph in
   bf16, shaped around what Torq 2.3.0 gets right (`torqBf16<Lang><Graph>`): weight matmuls on pre-transposed bf16
-  constants, sum reductions as matmuls with an all-ones matrix, optimization barriers after every matmul and
-  transpose, and after every elementwise op that feeds another one (Torq runs an elementwise dispatch on the NPU only
-  when it holds a single op). Those graphs compile with the image's `compile-torq --target <params.torq_hw>` and
+  constants (an im2col conv weight as its folded `[out, k·in]` matrix), sum reductions as matmuls with an all-ones
+  matrix, optimization barriers after every matmul, transpose and strided slice, and after every elementwise op that
+  feeds another one or a transpose (Torq runs an elementwise dispatch on the NPU only when it holds a single op).
+  Those graphs compile with the image's `compile-torq --target <params.torq_hw>` and
   `--torq-disable-css --iree-scheduling-optimize-bindings=false --iree-flow-inline-constants-max-byte-length=4194304`.
 
 `cpu-sl26xx` sets the first two. On its Cortex-A55 the int8 weights take the streaming real-time factor from 1.48 to
-0.95, with identical finals on 16 test clips. `torq-sl26xx` moves the encoder to the NPU (`npu_graphs = "encoder"`,
-int8 for the other three): on an SL2610 with Torq 2.3.0 the encoder matches its f32 graph at cosine 0.9995, finals are
-identical on 12 test clips, and the real-time factor goes from 0.77 (`cpu-sl26xx`) to 0.71. The pack's descriptor has
-to place the encoder on the `torq` device.
+0.95, with identical finals on 16 test clips. `torq-sl26xx` moves the frontend and the encoder to the NPU
+(`npu_graphs = "frontend,encoder"`, int8 for the decoder graphs and the adapter): on an SL2610 with Torq 2.3.0 they
+match their f32 graphs at cosine 0.99996 and 0.9995, finals are identical on 12 test clips, and the real-time factor
+goes from 0.77 (`cpu-sl26xx`) to 0.57; the frontend takes 48 ms per window instead of 185 ms. The pack's descriptor
+has to place both graphs on the `torq` device.
 
 ## Step 6 — Runtime, measure, pack, sign
 

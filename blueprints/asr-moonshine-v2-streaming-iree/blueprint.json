@@ -260,7 +260,7 @@
         "driver": {
           "name": "Torq-fork IREE runtime",
           "min_version": ">=2.3.0 <2.4",
-          "note": "modules come from the Torq 2.3.0 compiler; the app links the matching runtime (torq driver for the encoder, local-task for the rest)"
+          "note": "modules come from the Torq 2.3.0 compiler; the app links the matching runtime (torq driver for the frontend and the encoder, local-task for the rest)"
         },
         "os": {
           "name": "linux"
@@ -273,7 +273,7 @@
         "toolchain": "iree-tools-torq",
         "conv1d_im2col": "true",
         "int8_weights": "adapter,prefill,with_past",
-        "npu_graphs": "encoder",
+        "npu_graphs": "frontend,encoder",
         "torq_hw": "SL2610"
       }
     }
@@ -447,7 +447,7 @@
         "en-encoder-torq-bf16-mlir",
         "de-encoder-torq-bf16-mlir"
       ],
-      "description": "Only for the graphs a target lists in params.npu_graphs (torq-sl26xx: the encoder): the whole graph in bf16 for the Synaptics Torq NPU, inputs and outputs stay f32. Weight matmuls read pre-transposed bf16 constants (Torq asserts on transposed-B bf16 matmuls), sum reductions become matmuls with an all-ones matrix (Torq gets the small row vectors between a reduce and its broadcast wrong), and optimization barriers keep IREE from fusing anything into a matmul or a transpose (Torq drops ops fused there). A barrier also follows every elementwise op that feeds another one: Torq runs an elementwise dispatch on the NPU only when it holds a single op, fused chains run on the host. The compile step then runs the Torq backend (compile-torq --torq-hw=<params.torq_hw>) with --torq-disable-css --iree-scheduling-optimize-bindings=false --iree-flow-inline-constants-max-byte-length=4194304. On an SL2610 with Torq 2.3.0 (en): cosine 0.9995 against the f32 encoder, finals identical on 12 golden clips, streaming RTF 0.77 -> 0.71 against cpu-sl26xx."
+      "description": "Only for the graphs a target lists in params.npu_graphs (torq-sl26xx: the frontend and the encoder): the whole graph in bf16 for the Synaptics Torq NPU, inputs and outputs stay f32. Weight matmuls read pre-transposed bf16 constants (Torq asserts on transposed-B bf16 matmuls), an im2col conv weight its folded [out, k*in] bf16 matrix, sum reductions become matmuls with an all-ones matrix (Torq gets the small row vectors between a reduce and its broadcast wrong), and optimization barriers keep IREE from fusing anything into a matmul, a transpose or a strided slice (Torq drops ops fused there, or fails on them). A barrier also follows every elementwise op that feeds another one or a transpose: Torq runs an elementwise dispatch on the NPU only when it holds a single op, fused chains run on the host. The compile step then runs the Torq backend (compile-torq --torq-hw=<params.torq_hw>) with --torq-disable-css --iree-scheduling-optimize-bindings=false --iree-flow-inline-constants-max-byte-length=4194304. On an SL2610 with Torq 2.3.0 (en): cosine 0.99996 (frontend) and 0.9995 (encoder) against the f32 graphs, finals identical on 12 golden clips, streaming RTF 0.77 -> 0.57 against cpu-sl26xx (0.71 with only the encoder on the NPU)."
     },
     {
       "id": "compile",
