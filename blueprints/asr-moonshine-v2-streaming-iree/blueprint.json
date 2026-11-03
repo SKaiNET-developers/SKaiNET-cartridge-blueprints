@@ -123,8 +123,8 @@
       "description": "IREE tools (StableHLO -> IREE): iree-compile with parameter export"
     },
     "iree-tools-torq": {
-      "version": "2.0.0",
-      "image": "skainet/iree-compiler-torq:2.0.0",
+      "version": "2.3.0",
+      "image": "skainet/iree-compiler-torq:2.3.0",
       "description": "Synaptics Torq-fork iree-compile (SKaiNET-embedded-vendors synaptics-torq/docker) for SL26xx boards: their runtime rejects upstream-IREE modules, so targets with params.toolchain = iree-tools-torq compile here; parameters still come from iree-tools (shared .irpa format)"
     },
     "iree-android-runtime": {
