@@ -16,8 +16,8 @@ materialize it into a cartridge with *your* profile.
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, pack locator and language selection are common code; a **runtime binding exists for Android** (see *Platforms*) |
 | Flavors | `en`, `de` — one language per flavor; a profile selects one or both |
-| Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`); `cpu-sl26xx` (Linux aarch64, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules); `torq-sl26xx` (the same, with the encoder on the Torq NPU); `sl26xx-cpu-int8` (the same graphs as `torq-sl26xx`, all on the CPU, the encoder int8 × int8) |
-| Toolchain | SKaiNET 0.61.0, SKaiNET-transformers 0.62.2 (exporter), 0.63.1 (runtime: incremental frontend), IREE tools 3.11.0 |
+| Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`); `cpu-sl26xx` (Linux aarch64, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules); `torq-sl26xx` (the same, with the encoder on the Torq NPU as one dispatch, through TOSA); `sl26xx-cpu-int8` (the same graphs as `torq-sl26xx`, all on the CPU, the encoder int8 × int8) |
+| Toolchain | SKaiNET 0.61.0, SKaiNET-transformers 0.62.2 (exporter), 0.63.1 (runtime: incremental frontend), IREE tools 3.11.0; SL26xx targets: `skainet/iree-compiler-torq:2.3.0`, and for `tosa_graphs` `skainet/stablehlo-tosa:2.3.0` (both from SKaiNET-embedded-vendors `synaptics-torq/`) |
 
 ## What you will build
 
@@ -125,6 +125,23 @@ Three `convert` rewrites run before the compile when the target asks for them:
   Those graphs compile with the image's `compile-torq --target <params.torq_hw>` and
   `--torq-disable-css --iree-scheduling-optimize-bindings=false --iree-flow-inline-constants-max-byte-length=4194304`.
 
+- `params.tosa_graphs = "encoder"` (a subset of `npu_graphs`; `torqTosa<Lang><Graph>`): those NPU graphs take the
+  TOSA route instead of the bf16 rewrite. Torq's `tosa-torq` input pipeline makes each function **one** NPU
+  dispatch, as for the vendor's own models; on the StableHLO route every op is its own dispatch, and the runtime's
+  per-dispatch bookkeeping (start/stop of the NPU "network", cache syncs) dominates. The step:
+  1. rewrites divides by a broadcast in the StableHLO (`x / broadcast(sqrt(z))` → `x · broadcast(rsqrt(z))`,
+     `x / broadcast(y)` → `x · broadcast(1/y)`), so the reciprocal runs on the row vector, not the broadcast tile, and
+     no `sqrt` (a `pow` in TOSA) is left: neither has an NPU kernel;
+  2. runs StableHLO's own `--stablehlo-prepare-for-tosa --stablehlo-legalize-to-tosa` in the `stablehlo-tosa`
+     toolchain image (`stablehlo-opt` built from the Torq compiler's LLVM, so the TOSA parses in its `iree-compile`);
+  3. translates what the legalization leaves (`broadcast_in_dim`, `sqrt`, `rsqrt`, weight and attention
+     `dot_general`) and fails on anything else.
+
+  Those graphs compile with `compile-torq --input tosa-torq` and `--torq-convert-dtypes` (Torq's bf16),
+  `--torq-disable-css`, `--iree-opt-const-expr-hoisting=false`, `--iree-dispatch-creation-enable-elementwise-fusion=false`
+  (the NPU runs single-op elementwise kernels only; a fused chain falls back to host code) and
+  `--iree-flow-inline-constants-max-byte-length=33554432` (otherwise the weights are cache-synced on every call).
+
 - `params.cross_kv_cache = "true"` (for a runtime with a cross-K/V cache; `crossKv<Lang>`): prefill computes every
   layer's cross-attention K and V from all 256 padded memory rows on each restart, though a row's K/V never change
   once it is final. The step takes those projections out of prefill, which then reads the cached K/V instead of the
@@ -158,6 +175,12 @@ per-dispatch runtime work and host-fallback transposes (137 ms per 64-frame call
 ukernel it takes 42 ms. The real-time factor is 0.24 and the final arrives ~230 ms after the last sample, but the
 encoder is less exact (cosine 0.9987 against its f32 graph, NPU bf16: 0.9996): 11 of the 12 finals are identical,
 the 12th has different (fewer) word errors. Both targets are kept so they can be compared on more audio.
+
+`tosa_graphs = "encoder"` then takes the NPU encoder through TOSA: one dispatch per call instead of ~350 (plus 553
+copy dispatches), **32 ms per 64-frame call instead of 137** (NPU 23 ms, host code 6 ms, mostly `exp`), cosine 0.9991
+against its f32 graph. On `torq-sl26xx`: finals identical on the 12 test clips, encoder 5.9 → 1.3 s for 36.9 s of
+audio, real-time factor 0.34 → 0.25, final ~240 ms after the last sample (was ~325 ms). That matches
+`sl26xx-cpu-int8` in speed while keeping the bf16 encoder's transcripts and leaving the A55 free during the encoder.
 
 ## Step 6 — Runtime, measure, pack, sign
 
