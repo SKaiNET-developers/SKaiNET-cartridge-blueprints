@@ -4,6 +4,7 @@ import sk.ainet.cartridge.blueprint.gradle.IreeCompileTask
 import sk.ainet.cartridge.blueprint.gradle.IreeExportParametersTask
 import sk.ainet.cartridge.blueprint.gradle.Int8WeightsTask
 import sk.ainet.cartridge.blueprint.gradle.TorqBf16Task
+import sk.ainet.cartridge.blueprint.steps.Int8MatmulRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8WeightsRewrite
 
 // Blueprint: streaming speech-to-text with Moonshine v2 (tiny, en + de), IREE on Vulkan or CPU.
@@ -170,6 +171,8 @@ for ((language, source) in flavors) {
     val useCrossKv = selected.map { it.params["cross_kv_cache"] == "true" }
     // graphs whose large matrices go int8 (params.int8_weights = "encoder,adapter,…")
     val int8Graphs = selected.map { t -> t.params["int8_weights"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
+    // graphs among them whose weight matmuls also quantize their activations (params.int8_activations = "with_past")
+    val int8ActGraphs = selected.map { t -> t.params["int8_activations"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
     // graphs that run on the Torq NPU (params.npu_graphs = "encoder"): whole graph in bf16, compiled for Torq
     val npuGraphs = selected.map { t -> t.params["npu_graphs"].orEmpty().split(',').map(String::trim).filter(String::isNotEmpty).toSet() }
 
@@ -196,9 +199,14 @@ for ((language, source) in flavors) {
             group = "cartridge blueprint steps"
             dependsOn(export, sourceTasks)
             input.set(source)
+            activations.set(int8ActGraphs.map { graph in it })
             output.set(work.map { it.file("convert/$language/$graph-int8.mlir") })
         }
         val useInt8 = int8Graphs.map { graph in it }
+        val useInt8Act = int8ActGraphs.zip(int8Graphs) { act, int8 ->
+            if (graph in act && graph !in int8) throw GradleException("$graph is in params.int8_activations but not in params.int8_weights")
+            graph in act
+        }
 
         // convert (graphs listed in params.npu_graphs) — the whole graph in bf16, shaped for the Torq NPU.
         val torqBf16 = tasks.register<TorqBf16Task>("torqBf16$lang$g") {
@@ -218,8 +226,9 @@ for ((language, source) in flavors) {
             image.set(selected.map { it.image(it.params["toolchain"] ?: "iree-tools") })
             dependsOn(export, sourceTasks, useInt8.map { if (it) listOf(int8) else emptyList() }, onNpu.map { if (it) listOf(torqBf16) else emptyList() })
             input.set(onNpu.flatMap { npu -> if (npu) torqBf16.flatMap { t -> t.output } else useInt8.flatMap { if (it) int8.flatMap { t -> t.output } else source } })
-            // without hoisting and const-eval, so the dequantization is not folded back into f32 constants
-            extraArgs.set(useInt8.map { if (it) Int8WeightsRewrite.COMPILE_FLAGS else emptyList() })
+            // weight-only int8: without hoisting and const-eval, so the dequantization is not folded back into f32
+            // constants; int8 x int8: data tiling and ukernels, the int8 weights packed at compile time
+            extraArgs.set(useInt8.zip(useInt8Act) { int8, act -> if (act) Int8MatmulRewrite.COMPILE_FLAGS else if (int8) Int8WeightsRewrite.COMPILE_FLAGS else emptyList() })
             backend.set(onNpu.flatMap { if (it) provider { "torq" } else selected.map { t -> t.param("backend") } })
             target.set(onNpu.flatMap { if (it) selected.map { t -> t.params["torq_hw"] ?: "SL2610" } else selected.map { t -> t.param("iree_target") } })
             // f32 decoder graphs read their weights from the archive; int8 ones carry them inline

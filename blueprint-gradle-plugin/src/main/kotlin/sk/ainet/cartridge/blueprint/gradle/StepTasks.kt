@@ -18,6 +18,7 @@ import org.gradle.work.DisableCachingByDefault
 import sk.ainet.cartridge.blueprint.steps.Conv1dIm2colRewrite
 import sk.ainet.cartridge.blueprint.steps.CrossKvCacheRewrite
 import sk.ainet.cartridge.blueprint.steps.HostGatherRewrite
+import sk.ainet.cartridge.blueprint.steps.Int8MatmulRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8ParametersRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8WeightsRewrite
 import sk.ainet.cartridge.blueprint.steps.TorqBf16Rewrite
@@ -61,18 +62,27 @@ abstract class Conv1dIm2colTask : DefaultTask() {
 
 /**
  * `convert`: weight-only int8 for the large matrices of an exported StableHLO module (per-row scales, dequantized in
- * the graph). Compile the output with [Int8WeightsRewrite.COMPILE_FLAGS].
+ * the graph). Compile the output with [Int8WeightsRewrite.COMPILE_FLAGS]. With [activations], the weight matmuls then
+ * become int8 × int8 ([Int8MatmulRewrite]); compile that with [Int8MatmulRewrite.COMPILE_FLAGS] instead.
  */
 @CacheableTask
 abstract class Int8WeightsTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
+    @get:Input @get:Optional abstract val activations: Property<Boolean>
     @get:OutputFile abstract val output: RegularFileProperty
 
     @TaskAction
     fun run() = materializing {
         val out = output.get().asFile.apply { parentFile.mkdirs() }
-        val result = input.get().asFile.bufferedReader().use { r -> out.bufferedWriter().use { w -> Int8WeightsRewrite.rewrite(r, w) } }
+        val w8a8 = activations.getOrElse(false)
+        val weights = if (w8a8) File(out.path + ".weights") else out
+        val result = input.get().asFile.bufferedReader().use { r -> weights.bufferedWriter().use { w -> Int8WeightsRewrite.rewrite(r, w) } }
         logger.lifecycle("int8-weights: ${result.rewritten} matrices as int8 in ${out.name}, ${result.bytesSaved / 1_000_000} MB fewer weight bytes")
+        if (w8a8) {
+            val m = weights.bufferedReader().use { r -> out.bufferedWriter().use { w -> Int8MatmulRewrite.rewrite(r, w) } }
+            weights.delete()
+            logger.lifecycle("int8-matmul: ${m.matmuls} weight matmuls as int8 x int8 in ${out.name}")
+        }
     }
 }
 

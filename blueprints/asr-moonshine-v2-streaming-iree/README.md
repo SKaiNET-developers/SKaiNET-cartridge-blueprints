@@ -107,6 +107,12 @@ Three `convert` rewrites run before the compile when the target asks for them:
   Those graphs compile with `--iree-opt-const-expr-hoisting=false --iree-opt-const-eval=false`, so the weights stay
   int8 inside the `.vmfb`. When both decoder graphs are listed they read no parameter archive, so the archive is
   neither compiled against nor packed (86 MB less for the English flavor).
+- `params.int8_activations = "with_past"` (a subset of `int8_weights`): those graphs' weight matmuls also quantize their
+  activation per row (`max|row| / 127`) and multiply int8 by int8 into i32, both scales applied to the result. The CPU
+  backend otherwise dequantizes the weights inside every matmul on every call; this way the matmuls use the
+  dot-product ukernel. They compile with `--iree-global-opt-data-tiling --iree-llvmcpu-enable-ukernels=all` instead,
+  which packs the int8 weights at compile time. The activation rounding changes the numerics a little: check the
+  transcripts per graph.
 
 - `params.npu_graphs = "frontend,encoder"` (the graphs to run on the Torq NPU, not also in `int8_weights`): the whole graph in
   bf16, shaped around what Torq 2.3.0 gets right (`torqBf16<Lang><Graph>`): weight matmuls on pre-transposed bf16
@@ -132,7 +138,9 @@ match their f32 graphs at cosine 0.99996 and 0.9995, finals are identical on 12 
 goes from 0.77 (`cpu-sl26xx`) to 0.57; the frontend takes 48 ms per window instead of 185 ms. The pack's descriptor
 has to place both graphs on the `torq` device. With `cross_kv_cache` as well, prefill takes 32 ms per call instead of
 166 ms and the K/V of a window 4.5 ms on the NPU; the real-time factor goes to 0.44 and the final arrives ~450 ms
-after the last sample (was ~580 ms).
+after the last sample (was ~580 ms). `int8_activations = "with_past"` then takes a decoder step from 29 to 17 ms
+(finals identical on the 12 test clips): real-time factor 0.35, final ~360 ms after the last sample. With prefill in
+the list as well, 2 of the 12 finals changed, so it stays weight-only.
 
 ## Step 6 — Runtime, measure, pack, sign
 
