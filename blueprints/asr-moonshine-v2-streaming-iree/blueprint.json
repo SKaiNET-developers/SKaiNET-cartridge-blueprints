@@ -260,7 +260,7 @@
         "driver": {
           "name": "Torq-fork IREE runtime",
           "min_version": ">=2.3.0 <2.4",
-          "note": "modules come from the Torq 2.3.0 compiler; the app links the matching runtime (torq driver for the frontend and the encoder, local-task for the rest)"
+          "note": "modules come from the Torq 2.3.0 compiler; the app links the matching runtime (torq driver for the encoder, local-task for the rest)"
         },
         "os": {
           "name": "linux"
@@ -273,26 +273,26 @@
         "toolchain": "iree-tools-torq",
         "conv1d_im2col": "true",
         "int8_weights": "adapter,prefill,with_past",
-        "npu_graphs": "frontend,encoder",
+        "npu_graphs": "encoder",
+        "data_tiling": "frontend,frontend_step",
         "cross_kv_cache": "true",
         "int8_activations": "with_past",
         "torq_hw": "SL2610"
       }
     },
     {
-      "id": "torq-sl26xx-encoder-cpu",
+      "id": "sl26xx-cpu-int8",
       "target": {
-        "hardware": "IREE-linux-aarch64 (Synaptics SL26xx, Cortex-A55 + Torq NPU)",
-        "abi": "linux-aarch64",
-        "accelerator": "Synaptics Torq NPU (SL2610)"
+        "hardware": "IREE-linux-aarch64 (Synaptics SL26xx, Cortex-A55)",
+        "abi": "linux-aarch64"
       },
       "requirements": {
-        "needs_accelerator": true,
+        "needs_accelerator": false,
         "memory_mb": 1900,
         "driver": {
           "name": "Torq-fork IREE runtime",
           "min_version": ">=2.3.0 <2.4",
-          "note": "modules come from the Torq 2.3.0 compiler; the app links the matching runtime (torq driver for the frontend, local-task for the rest)"
+          "note": "modules come from the Torq 2.3.0 compiler; the app links the matching runtime (local-task driver)"
         },
         "os": {
           "name": "linux"
@@ -305,10 +305,9 @@
         "toolchain": "iree-tools-torq",
         "conv1d_im2col": "true",
         "int8_weights": "encoder,adapter,prefill,with_past",
-        "npu_graphs": "frontend",
-        "cross_kv_cache": "true",
         "int8_activations": "encoder,with_past",
-        "torq_hw": "SL2610"
+        "data_tiling": "frontend,frontend_step",
+        "cross_kv_cache": "true"
       }
     }
   ],
