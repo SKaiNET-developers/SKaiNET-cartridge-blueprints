@@ -16,9 +16,12 @@ import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import org.gradle.work.DisableCachingByDefault
 import sk.ainet.cartridge.blueprint.steps.Conv1dIm2colRewrite
+import sk.ainet.cartridge.blueprint.steps.CrossKvCacheRewrite
 import sk.ainet.cartridge.blueprint.steps.HostGatherRewrite
+import sk.ainet.cartridge.blueprint.steps.Int8MatmulRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8ParametersRewrite
 import sk.ainet.cartridge.blueprint.steps.Int8WeightsRewrite
+import sk.ainet.cartridge.blueprint.steps.TorqBf16Rewrite
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
@@ -59,18 +62,27 @@ abstract class Conv1dIm2colTask : DefaultTask() {
 
 /**
  * `convert`: weight-only int8 for the large matrices of an exported StableHLO module (per-row scales, dequantized in
- * the graph). Compile the output with [Int8WeightsRewrite.COMPILE_FLAGS].
+ * the graph). Compile the output with [Int8WeightsRewrite.COMPILE_FLAGS]. With [activations], the weight matmuls then
+ * become int8 × int8 ([Int8MatmulRewrite]); compile that with [Int8MatmulRewrite.COMPILE_FLAGS] instead.
  */
 @CacheableTask
 abstract class Int8WeightsTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
+    @get:Input @get:Optional abstract val activations: Property<Boolean>
     @get:OutputFile abstract val output: RegularFileProperty
 
     @TaskAction
     fun run() = materializing {
         val out = output.get().asFile.apply { parentFile.mkdirs() }
-        val result = input.get().asFile.bufferedReader().use { r -> out.bufferedWriter().use { w -> Int8WeightsRewrite.rewrite(r, w) } }
+        val w8a8 = activations.getOrElse(false)
+        val weights = if (w8a8) File(out.path + ".weights") else out
+        val result = input.get().asFile.bufferedReader().use { r -> weights.bufferedWriter().use { w -> Int8WeightsRewrite.rewrite(r, w) } }
         logger.lifecycle("int8-weights: ${result.rewritten} matrices as int8 in ${out.name}, ${result.bytesSaved / 1_000_000} MB fewer weight bytes")
+        if (w8a8) {
+            val m = weights.bufferedReader().use { r -> out.bufferedWriter().use { w -> Int8MatmulRewrite.rewrite(r, w) } }
+            weights.delete()
+            logger.lifecycle("int8-matmul: ${m.matmuls} weight matmuls as int8 x int8 in ${out.name}")
+        }
     }
 }
 
@@ -92,6 +104,50 @@ abstract class Int8ParametersTask : DefaultTask() {
         val input = safetensors.get().asFile
         val bytes = Int8ParametersRewrite.rewriteSafetensors(input, safetensorsOutput.get().asFile, result.matrices)
         logger.lifecycle("int8-parameters: ${result.matrices.size} matrices as int8, parameters ${input.length() / 1_000_000} -> ${bytes / 1_000_000} MB")
+    }
+}
+
+/**
+ * `convert`: the whole graph in bf16 for the Synaptics Torq NPU (see [TorqBf16Rewrite]). Compile the output with
+ * `backend = "torq"`, which adds [TorqBf16Rewrite.COMPILE_FLAGS].
+ */
+@CacheableTask
+abstract class TorqBf16Task : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
+    @get:OutputFile abstract val output: RegularFileProperty
+
+    @TaskAction
+    fun run() = materializing {
+        val result = TorqBf16Rewrite.rewrite(input.get().asFile.readText())
+        output.get().asFile.apply { parentFile.mkdirs() }.writeText(result.mlir)
+        logger.lifecycle(
+            "torq-bf16: ${result.weightMatmuls} weight matmuls and ${result.sumsAsMatmuls} sums as bf16 matmuls, " +
+                "${result.barriers} barriers in ${output.get().asFile.name}",
+        )
+    }
+}
+
+/**
+ * `convert` for targets with `params.cross_kv_cache = "true"`: the prefill takes the cross-attention K/V instead of the
+ * memory, and the encoder module gets one matmul that computes them for a window of adapter rows ([CrossKvCacheRewrite]).
+ */
+@CacheableTask
+abstract class CrossKvCacheTask : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val prefill: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val adapter: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val encoder: RegularFileProperty
+    @get:OutputFile abstract val prefillOutput: RegularFileProperty
+    @get:OutputFile abstract val encoderOutput: RegularFileProperty
+
+    @TaskAction
+    fun run() = materializing {
+        val r = CrossKvCacheRewrite.rewrite(
+            prefill.get().asFile, adapter.get().asFile, encoder.get().asFile, prefillOutput.get().asFile, encoderOutput.get().asFile,
+        )
+        logger.lifecycle(
+            "cross-kv: ${r.coneOps} ops and ${r.outputs} K/V outputs moved from prefill (${r.memoryRows} memory rows) " +
+                "to one matmul in the encoder module (@${r.function}, ${r.windowRows} rows)",
+        )
     }
 }
 
@@ -141,7 +197,9 @@ abstract class IreeToolsTask @Inject constructor(private val exec: ExecOperation
 /**
  * `compile`: StableHLO module → `.vmfb`.
  * `backend = "vulkan"` ⇒ `iree-compile --iree-hal-target-backends=vulkan-spirv --iree-vulkan-target=<target>`;
- * `backend = "cpu"` ⇒ `iree-compile --iree-hal-target-backends=llvm-cpu` for `target` = `host` | `arm32` | `arm64`.
+ * `backend = "cpu"` ⇒ `iree-compile --iree-hal-target-backends=llvm-cpu` for `target` = `host` | `arm32` | `arm64`;
+ * `backend = "torq"` ⇒ the Torq-fork image's `compile-torq` for `target` = the Torq hardware (`SL2610`), with
+ * [TorqBf16Rewrite.COMPILE_FLAGS] — for modules from [TorqBf16Task].
  */
 abstract class IreeCompileTask @Inject constructor(exec: ExecOperations) : IreeToolsTask(exec) {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val input: RegularFileProperty
@@ -160,8 +218,15 @@ abstract class IreeCompileTask @Inject constructor(exec: ExecOperations) : IreeT
     @TaskAction
     fun run() {
         val be = backend.get()
-        if (be != "vulkan" && be != "cpu") throw GradleException("IreeCompileTask.backend must be 'vulkan' or 'cpu', got '$be'")
+        if (be != "vulkan" && be != "cpu" && be != "torq") throw GradleException("IreeCompileTask.backend must be 'vulkan', 'cpu' or 'torq', got '$be'")
         val scope = parameterScope.orNull
+        if (be == "torq") {
+            if (scope != null) throw GradleException("IreeCompileTask: backend = torq does not take a parameter archive")
+            runInContainer(input.get().asFile, output.get().asFile, entrypoint = null) { i, o ->
+                listOf("compile-torq", i, "--out", o, "--target", target.get(), "--") + TorqBf16Rewrite.COMPILE_FLAGS + extraArgs.getOrElse(emptyList())
+            }
+            return
+        }
         if (scope == null) {
             runInContainer(input.get().asFile, output.get().asFile, entrypoint = null) { i, o ->
                 listOf(if (be == "vulkan") "compile-vulkan" else "compile-cpu", i, "--out", o, "--target", target.get()) + extraArgs.getOrElse(emptyList())

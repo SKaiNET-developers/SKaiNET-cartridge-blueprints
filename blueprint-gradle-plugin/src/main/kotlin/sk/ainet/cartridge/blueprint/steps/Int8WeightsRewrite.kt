@@ -96,7 +96,7 @@ object Int8WeightsRewrite {
     }
 
     /** The decimal values of `[[a, b, …], […]]` in `line[from, to)`, exactly [expected] of them. */
-    private fun parseFloats(line: String, from: Int, to: Int, expected: Int, name: String): FloatArray {
+    internal fun parseFloats(line: String, from: Int, to: Int, expected: Int, name: String, step: String = "int8-weights"): FloatArray {
         val out = FloatArray(expected)
         var k = 0
         var i = from
@@ -105,11 +105,11 @@ object Int8WeightsRewrite {
             if (ch == '[' || ch == ']' || ch == ',' || ch == ' ') { i++; continue }
             var j = i
             while (j < to && line[j] != ',' && line[j] != ']') j++
-            if (k == expected) throw MaterializationException("int8-weights: $name has more than $expected values")
+            if (k == expected) throw MaterializationException("$step: $name has more than $expected values")
             out[k++] = line.substring(i, j).trim().toFloat()
             i = j
         }
-        if (k != expected) throw MaterializationException("int8-weights: $name has $k values, its type says $expected")
+        if (k != expected) throw MaterializationException("$step: $name has $k values, its type says $expected")
         return out
     }
 

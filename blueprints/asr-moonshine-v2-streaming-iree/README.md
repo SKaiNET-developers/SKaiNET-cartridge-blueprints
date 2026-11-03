@@ -16,7 +16,7 @@ materialize it into a cartridge with *your* profile.
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform — `android`, `jvm`, `linuxX64`, `linuxArm64`, `macosArm64`. Contract, pack locator and language selection are common code; a **runtime binding exists for Android** (see *Platforms*) |
 | Flavors | `en`, `de` — one language per flavor; a profile selects one or both |
-| Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`); `cpu-sl26xx` (Linux aarch64, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules) |
+| Targets | `vulkan-armv7`, `cpu-armv7` (Android `armeabi-v7a`), `vulkan-arm64`, `cpu-arm64` (Android `arm64-v8a`); `cpu-sl26xx` (Linux aarch64, Cortex-A55, compiled by the Torq-fork compiler `skainet/iree-compiler-torq` because the SL26xx board runtime rejects upstream-IREE modules); `torq-sl26xx` (the same, with the frontend and the encoder on the Torq NPU); `torq-sl26xx-encoder-cpu` (only the frontend on the NPU, the encoder int8 × int8 on the CPU) |
 | Toolchain | SKaiNET 0.61.0, SKaiNET-transformers 0.62.2 (exporter), 0.63.1 (runtime: incremental frontend), IREE tools 3.11.0 |
 
 ## What you will build
@@ -98,7 +98,7 @@ Vulkan: `iree-compile --iree-hal-target-backends=vulkan-spirv --iree-vulkan-targ
 --iree-llvmcpu-target-cpu-features=+neon --iree-llvmcpu-link-embedded=false --iree-llvmcpu-link-static=false
 --iree-llvmcpu-stack-allocation-limit=1048576` (with a clang linker wrapper for the Android triple).
 
-Two `convert` rewrites run before the compile when the target asks for them:
+Three `convert` rewrites run before the compile when the target asks for them:
 
 - `params.conv1d_im2col = "true"`: the frontend's two strided 1-D convolutions as im2col + one matmul each, same
   arithmetic (`im2colFrontend<Lang>`).
@@ -107,9 +107,48 @@ Two `convert` rewrites run before the compile when the target asks for them:
   Those graphs compile with `--iree-opt-const-expr-hoisting=false --iree-opt-const-eval=false`, so the weights stay
   int8 inside the `.vmfb`. When both decoder graphs are listed they read no parameter archive, so the archive is
   neither compiled against nor packed (86 MB less for the English flavor).
+- `params.int8_activations = "with_past"` (a subset of `int8_weights`): those graphs' weight matmuls also quantize their
+  activation per row (`max|row| / 127`) and multiply int8 by int8 into i32, both scales applied to the result. The CPU
+  backend otherwise dequantizes the weights inside every matmul on every call; this way the matmuls use the
+  dot-product ukernel. They compile with `--iree-global-opt-data-tiling --iree-llvmcpu-enable-ukernels=all` instead,
+  which packs the int8 weights at compile time. The activation rounding changes the numerics a little: check the
+  transcripts per graph.
 
-`cpu-sl26xx` sets both. On its Cortex-A55 the int8 weights take the streaming real-time factor from 1.48 to 0.95,
-with identical finals on 16 test clips.
+- `params.npu_graphs = "frontend,encoder"` (the graphs to run on the Torq NPU, not also in `int8_weights`): the whole graph in
+  bf16, shaped around what Torq 2.3.0 gets right (`torqBf16<Lang><Graph>`): weight matmuls on pre-transposed bf16
+  constants (an im2col conv weight as its folded `[out, k·in]` matrix), sum reductions as matmuls with an all-ones
+  matrix, optimization barriers after every matmul, transpose and strided slice, and after every elementwise op that
+  feeds another one or a transpose (Torq runs an elementwise dispatch on the NPU only when it holds a single op).
+  Those graphs compile with the image's `compile-torq --target <params.torq_hw>` and
+  `--torq-disable-css --iree-scheduling-optimize-bindings=false --iree-flow-inline-constants-max-byte-length=4194304`.
+
+- `params.cross_kv_cache = "true"` (for a runtime with a cross-K/V cache; `crossKv<Lang>`): prefill computes every
+  layer's cross-attention K and V from all 256 padded memory rows on each restart, though a row's K/V never change
+  once it is final. The step takes those projections out of prefill, which then reads the cached K/V instead of the
+  memory, and adds them to the encoder module as a second function, `moonshine_v2_cross_kv`: one matmul from a
+  window of adapter rows (`[1, 64, 320]`) to every layer's K and V side by side (`[1, 64, 12·320]`; output j in
+  columns `j·320…`, head h at `h·40`). The runtime calls it after the adapter and splits the heads as it copies the
+  finalized rows into its cache. It runs on the encoder's device; the adapter and the decoder-step graph are
+  unchanged.
+
+`cpu-sl26xx` sets the first two. On its Cortex-A55 the int8 weights take the streaming real-time factor from 1.48 to
+0.95, with identical finals on 16 test clips. `torq-sl26xx` moves the frontend and the encoder to the NPU
+(`npu_graphs = "frontend,encoder"`, int8 for the decoder graphs and the adapter): on an SL2610 with Torq 2.3.0 they
+match their f32 graphs at cosine 0.99996 and 0.9995, finals are identical on 12 test clips, and the real-time factor
+goes from 0.77 (`cpu-sl26xx`) to 0.57; the frontend takes 48 ms per window instead of 185 ms. The pack's descriptor
+has to place both graphs on the `torq` device. With `cross_kv_cache` as well, prefill takes 32 ms per call instead of
+166 ms and the K/V of a window 4.5 ms on the NPU; the real-time factor goes to 0.44 and the final arrives ~450 ms
+after the last sample (was ~580 ms). `int8_activations = "with_past"` then takes a decoder step from 29 to 17 ms
+(finals identical on the 12 test clips): real-time factor 0.35, final ~360 ms after the last sample. With prefill in
+the list as well, 2 of the 12 finals changed, so it stays weight-only.
+
+`torq-sl26xx-encoder-cpu` is the same pack with the encoder (and the cross-K/V function in its module) back on the
+CPU, int8 × int8 (`npu_graphs = "frontend"`, `int8_activations = "encoder,with_past"`). On the NPU the encoder is
+dominated by per-dispatch runtime work and host-fallback transposes (137 ms per 64-frame call); on the A55 with the
+dot-product ukernel it takes 42 ms. The real-time factor goes from 0.36 to 0.25 and the final arrives ~280 ms after
+the last sample (was ~370 ms), but the encoder is less exact (cosine 0.9987 against its f32 graph, NPU bf16:
+0.9996): 11 of the 12 finals are identical, the 12th has different (fewer) word errors. Both are kept so they can be
+compared on more audio.
 
 ## Step 6 — Runtime, measure, pack, sign
 
