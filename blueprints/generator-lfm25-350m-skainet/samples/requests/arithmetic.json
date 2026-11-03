@@ -1,0 +1,10 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is 2 + 2?"
+    }
+  ],
+  "max_new_tokens": 8,
+  "decoder_policy": "HUGGING_FACE_5_COMPAT"
+}

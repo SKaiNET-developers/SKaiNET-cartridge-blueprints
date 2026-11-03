@@ -1,0 +1,547 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "generator-lfm25-350m-skainet",
+  "version": "0.1.0-eval",
+  "description": "Source-built POSIX Runtime ABI and persistent eager CPU JVM llm/v1 worker for LFM2.5-350M. New materializations require exact-artifact measurement evidence. Unsigned evaluation outputs remain NOASSERTION until dependency licensing and signing are supplied.",
+  "license": "NOASSERTION",
+  "descriptor_template": {
+    "family": "lfm2-hybrid",
+    "execution_mode": "eager",
+    "modality": "text",
+    "task": "generation",
+    "model": {
+      "name": "lfm2.5-350m",
+      "variant": "bf16-source-fp32-balanced-jvm"
+    },
+    "io": {
+      "mode": "streaming",
+      "input": {
+        "dtype": "utf8-json",
+        "shape": [
+          null
+        ]
+      },
+      "output": {
+        "dtype": "utf8-json",
+        "shape": [
+          null
+        ],
+        "output_schema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "prompt_ids"
+              ],
+              "properties": {
+                "type": {
+                  "const": "ready"
+                },
+                "prompt_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "text"
+              ],
+              "properties": {
+                "type": {
+                  "const": "delta"
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "text",
+                "finish_reason",
+                "tokens"
+              ],
+              "properties": {
+                "type": {
+                  "const": "final"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "finish_reason": {
+                  "enum": [
+                    "STOP",
+                    "LENGTH"
+                  ]
+                },
+                "tokens": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "requirements": {
+      "needs_accelerator": false,
+      "os": {
+        "name": "linux"
+      },
+      "driver": {
+        "name": "external Java 21 with jdk.incubator.vector",
+        "min_version": "21",
+        "note": "One active generation per cartridge. Set JAVA_HOME to an external Java 21 runtime with jdk.incubator.vector. Inference executes in a persistent JVM CPU worker; no NPU acceleration is claimed."
+      }
+    },
+    "attributes": {
+      "task_profile": "llm/v1",
+      "native_runtime_abi": "0.1",
+      "context_window_tokens": 2048,
+      "max_output_tokens": 256,
+      "default_max_output_tokens": 32,
+      "vocab_size": 65536,
+      "assigned_token_count": 64402,
+      "supports_tool_calling": false,
+      "supports_json_mode": false,
+      "temperature": 0,
+      "top_k": 1,
+      "top_p": 1,
+      "decoder_policy": "HUGGING_FACE_5_COMPAT",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "prefixItems": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "role",
+                  "content"
+                ],
+                "properties": {
+                  "role": {
+                    "enum": [
+                      "system",
+                      "user",
+                      "assistant"
+                    ]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                }
+              }
+            ],
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "content"
+              ],
+              "properties": {
+                "role": {
+                  "enum": [
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256
+          },
+          "temperature": {
+            "type": "number",
+            "const": 0
+          },
+          "top_k": {
+            "type": "integer",
+            "const": 1
+          },
+          "top_p": {
+            "type": "number",
+            "const": 1
+          }
+        }
+      },
+      "model_revision": "9e6c6ccf47cd318696e137d381a7ded8fe4df09f",
+      "stop_token_ids": [
+        7
+      ],
+      "runtime_architecture": "POSIX native C ABI with persistent JVM worker over framed stdin/stdout",
+      "external_java_runtime": true
+    }
+  },
+  "sources": [
+    {
+      "name": "liquid-lfm25-350m",
+      "role": "weights",
+      "uri": "hf://LiquidAI/LFM2.5-350M",
+      "revision": "9e6c6ccf47cd318696e137d381a7ded8fe4df09f",
+      "files": [
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:1c9c77a4471a7f590f85240f74ed1fc26df7fbde88c3006724e2f93ca993ea4e",
+          "size": 708984464
+        },
+        {
+          "path": "config.json",
+          "digest": "sha256:720b43d6ddc2ed25be23eed355aefcf342434a176dedad23dbe0a5e3ac24bbb8",
+          "size": 1281
+        },
+        {
+          "path": "generation_config.json",
+          "digest": "sha256:0ec7d228c4de7e3453e98bf6910c7eb7841e87fede63ea11c0f75a5c64e1c3c3",
+          "size": 134
+        },
+        {
+          "path": "tokenizer_config.json",
+          "digest": "sha256:3701f370c70034d06e28947ff51c1063983393319f429e3ce58f06a45fae67cc",
+          "size": 595
+        },
+        {
+          "path": "chat_template.jinja",
+          "digest": "sha256:ba551d58630afa3190b1be3602e28301f3d2e9bbac978dfc49d6d825171648b6",
+          "size": 5487
+        },
+        {
+          "path": "tokenizer.json",
+          "digest": "sha256:df1d8d5ec5d091b460562ffd545e4a5e91d17d4a0db7ebe733be34ed374377bd",
+          "size": 4733389
+        },
+        {
+          "path": "LICENSE",
+          "digest": "sha256:4d28ca14dedc0b3d0fcc2b3339f0e79931faa33874f3d24f522183a8fc70068c",
+          "size": 10574
+        }
+      ],
+      "license": "LicenseRef-LFM-Open-License-1.0",
+      "license_url": "https://huggingface.co/LiquidAI/LFM2.5-350M/blob/9e6c6ccf47cd318696e137d381a7ded8fe4df09f/LICENSE",
+      "redistribution": "restricted"
+    }
+  ],
+  "inputs": [
+    {
+      "name": "native-benchmark",
+      "role": "calibration",
+      "required": true,
+      "description": "Raw benchmark.json for the exact measured execution artifacts."
+    },
+    {
+      "name": "native-measurement-validation",
+      "role": "calibration",
+      "required": true,
+      "description": "Independent benchmark validator acceptance binding all execution artifacts."
+    },
+    {
+      "name": "benchmark-supervisor",
+      "role": "calibration",
+      "required": true,
+      "description": "Process-supervisor evidence for the raw benchmark."
+    }
+  ],
+  "toolchain": {
+    "blueprint-plugin": {
+      "version": "2dcf43edbd65d7db29d75056d47151ca6178e602",
+      "coordinates": "sk.ainet.cartridge.blueprint",
+      "description": "Pinned reference source plugin; unmodified included build."
+    },
+    "workspace-gradle": {
+      "version": "9.7.0",
+      "description": "Repository wrapper builds this JVM worker and source-only native recipe."
+    },
+    "kotlin": {
+      "version": "2.4.21"
+    },
+    "java": {
+      "version": "21"
+    },
+    "skainet-transformers": {
+      "version": "0.63.3",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-bom"
+    },
+    "skainet-engine": {
+      "version": "0.62.0",
+      "coordinates": "sk.ainet.core:skainet-backend-cpu"
+    },
+    "llm-v1": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.profiles:llm-v1",
+      "description": "Actual profile sources pinned from SKaiNET-cartridge-blueprints 2dcf43edbd65d7db29d75056d47151ca6178e602; local JVM source build."
+    },
+    "native-compiler": {
+      "version": "clang-19",
+      "image": "skainet/iree-compiler:3.11.0",
+      "description": "Existing pinned ARM64 Linux compiler image; Docker network disabled. Compiles the eager POSIX bridge, without using IREE for inference."
+    }
+  },
+  "targets": [
+    {
+      "id": "linux-aarch64",
+      "target": {
+        "hardware": "Linux AArch64 CPU",
+        "abi": "aarch64-linux-gnu",
+        "accelerator": "none"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "os": {
+          "name": "linux"
+        },
+        "driver": {
+          "name": "external Java 21 with jdk.incubator.vector",
+          "min_version": "21",
+          "note": "One active generation per cartridge. Set JAVA_HOME to an external Java 21 runtime with jdk.incubator.vector. Inference executes in a persistent JVM CPU worker; no NPU acceleration is claimed."
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "liquid-lfm25-350m"
+      ],
+      "produces": [
+        "model-weights",
+        "model-config",
+        "generation-config",
+        "tokenizer-config",
+        "chat-template",
+        "tokenizer",
+        "model-license"
+      ],
+      "description": "Fetch or reuse the seven digest-verified checkpoint files from the private local mirror."
+    },
+    {
+      "id": "build-worker",
+      "kind": "compile",
+      "tool": "workspace-gradle",
+      "produces": [
+        "worker-jars",
+        "worker-config"
+      ],
+      "description": "Build this blueprint module with installDist and generate the pinned worker configuration."
+    },
+    {
+      "id": "build-native",
+      "kind": "build-runtime",
+      "tool": "native-compiler",
+      "produces": [
+        "native-runtime",
+        "native-build-report",
+        "native-compiler-report",
+        "native-license"
+      ],
+      "description": "Resolve the descriptor with the actual plugin, then compile the actual native C ABI bridge with canonical ABI and exact pretty pack descriptor bytes embedded."
+    },
+    {
+      "id": "prepare-measurement",
+      "kind": "measure",
+      "tool": "workspace-gradle",
+      "uses": [
+        "native-runtime",
+        "worker-jars",
+        "worker-config"
+      ],
+      "produces": [
+        "measurement-workload"
+      ],
+      "description": "Stage an explicitly unmeasured provisional execution directory. Run the workload on the target Linux AArch64 host, independently validate its raw evidence and unchanged execution closure, then create the accepted materialization profile."
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "native-runtime",
+        "worker-jars",
+        "worker-config",
+        "native-benchmark",
+        "native-measurement-validation",
+        "benchmark-supervisor"
+      ],
+      "produces": [
+        "unsigned-pack"
+      ],
+      "description": "Actual pinned materializer copies the unchanged measured artifacts and evidence. A fresh destination guard preserves failed and prior outputs. No signing identity or license acceptance is fabricated."
+    }
+  ],
+  "outputs": [
+    {
+      "from": "model-weights",
+      "role": "weights",
+      "path": "artifacts/model/model.safetensors",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "model-config",
+      "role": "other",
+      "path": "artifacts/model/config.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "generation-config",
+      "role": "other",
+      "path": "artifacts/model/generation_config.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "tokenizer-config",
+      "role": "other",
+      "path": "artifacts/model/tokenizer_config.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "chat-template",
+      "role": "other",
+      "path": "artifacts/model/chat_template.jinja",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "tokenizer",
+      "role": "tokenizer",
+      "path": "artifacts/model/tokenizer.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "model-license",
+      "role": "other",
+      "path": "artifacts/model/LICENSE",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "native-runtime",
+      "role": "runtime",
+      "path": "artifacts/runtime/liblfm2_cartridge.so",
+      "derived_from": []
+    },
+    {
+      "from": "worker-jars",
+      "role": "other",
+      "path": "artifacts/jvm/lib/",
+      "derived_from": []
+    },
+    {
+      "from": "worker-config",
+      "role": "other",
+      "path": "artifacts/runtime/worker.json",
+      "derived_from": []
+    },
+    {
+      "from": "native-build-report",
+      "role": "other",
+      "path": "artifacts/runtime/native-build.json",
+      "derived_from": []
+    },
+    {
+      "from": "native-compiler-report",
+      "role": "other",
+      "path": "artifacts/runtime/compiler-container.json",
+      "derived_from": []
+    },
+    {
+      "from": "native-license",
+      "role": "other",
+      "path": "artifacts/runtime/LICENSE.upstream",
+      "derived_from": []
+    },
+    {
+      "from": "measurement-workload",
+      "role": "calibration",
+      "path": "artifacts/evaluation/native-abi-workload.json",
+      "derived_from": []
+    },
+    {
+      "from": "native-benchmark",
+      "role": "calibration",
+      "path": "artifacts/evaluation/native-abi-benchmark.json",
+      "derived_from": [
+        "native-benchmark"
+      ]
+    },
+    {
+      "from": "native-measurement-validation",
+      "role": "calibration",
+      "path": "artifacts/evaluation/native-abi-validation.json",
+      "derived_from": [
+        "native-measurement-validation"
+      ]
+    },
+    {
+      "from": "benchmark-supervisor",
+      "role": "calibration",
+      "path": "artifacts/evaluation/native-abi-supervisor.json",
+      "derived_from": [
+        "benchmark-supervisor"
+      ]
+    }
+  ],
+  "verification": [
+    {
+      "id": "native-correctness",
+      "kind": "golden",
+      "description": "Re-run the independent real C ABI consumer on the final materialized artifacts; preserve unchanged HF exact trace gates and lifecycle checks."
+    },
+    {
+      "id": "native-performance",
+      "kind": "conformance",
+      "description": "Independent saved-report validation of exact artifact identity, raw timing rows, workload, target and external Java. Stable descriptor provenance fields avoid rebuilding the runtime after measurement; numeric results live in the hashed report. This is a bounded evidence gate, not a ctg-conform or full-spec claim."
+    },
+    {
+      "id": "sealed-cartridge",
+      "kind": "conformance",
+      "description": "Pending: license remediation, builder-owned signing, independent signature/artifact verification, full conformance and external Java distribution policy."
+    }
+  ]
+}

@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "id": "native-abi-short-chat-v1",
+  "scope": "three_short_reference_conversations_equal_mix",
+  "model": {
+    "id": "LiquidAI/LFM2.5-350M",
+    "revision": "9e6c6ccf47cd318696e137d381a7ded8fe4df09f",
+    "checkpoint_sha256": "1c9c77a4471a7f590f85240f74ed1fc26df7fbde88c3006724e2f93ca993ea4e",
+    "metadata_sha256": {
+      "config.json": "720b43d6ddc2ed25be23eed355aefcf342434a176dedad23dbe0a5e3ac24bbb8",
+      "generation_config.json": "0ec7d228c4de7e3453e98bf6910c7eb7841e87fede63ea11c0f75a5c64e1c3c3",
+      "tokenizer_config.json": "3701f370c70034d06e28947ff51c1063983393319f429e3ce58f06a45fae67cc",
+      "chat_template.jinja": "ba551d58630afa3190b1be3602e28301f3d2e9bbac978dfc49d6d825171648b6",
+      "tokenizer.json": "df1d8d5ec5d091b460562ffd545e4a5e91d17d4a0db7ebe733be34ed374377bd",
+      "LICENSE": "4d28ca14dedc0b3d0fcc2b3339f0e79931faa33874f3d24f522183a8fc70068c"
+    }
+  },
+  "decoder_policy": "HUGGING_FACE_5_COMPAT",
+  "sampling": {
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "max_output_tokens": 8
+  },
+  "warmup_order": [
+    "arithmetic",
+    "system",
+    "multiturn"
+  ],
+  "measured_order": [
+    "arithmetic",
+    "system",
+    "multiturn",
+    "arithmetic",
+    "system",
+    "multiturn",
+    "arithmetic",
+    "system",
+    "multiturn",
+    "arithmetic",
+    "system",
+    "multiturn",
+    "arithmetic",
+    "system",
+    "multiturn",
+    "arithmetic",
+    "system",
+    "multiturn",
+    "arithmetic",
+    "system",
+    "multiturn",
+    "arithmetic",
+    "system",
+    "multiturn",
+    "arithmetic",
+    "system",
+    "multiturn",
+    "arithmetic",
+    "system",
+    "multiturn"
+  ],
+  "cases": [
+    {
+      "id": "arithmetic",
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "What is 2 + 2?"
+          }
+        ],
+        "max_output_tokens": 8
+      },
+      "request_sha256": "7b15048ae69f84d6d1da705f5d237c0046c548268882374250bc1a7a8578504e",
+      "original_request": {
+        "file": "samples/requests/arithmetic.json",
+        "sha256": "247ede37b4c49cf1ff73641f1cbaa2a54e0378d20f4c5a81b63d26507f0de87c"
+      },
+      "reference": {
+        "file": "samples/golden-transcripts.json",
+        "sha256": "9bba3c56cd1ef374c4260fa42f72bea292a26de0fcdfec870c7941422dd61782",
+        "trace_id": "arithmetic"
+      },
+      "expected": {
+        "prompt_ids": [
+          1,
+          6,
+          6423,
+          708,
+          3493,
+          856,
+          730,
+          527,
+          2011,
+          730,
+          527,
+          540,
+          7,
+          708,
+          6,
+          64015,
+          708
+        ],
+        "tokens": [
+          527,
+          2011,
+          730,
+          527,
+          1051,
+          730,
+          529,
+          7
+        ],
+        "text": "2 + 2 = 4",
+        "finish_reason": "STOP"
+      }
+    },
+    {
+      "id": "system",
+      "request": {
+        "messages": [
+          {
+            "role": "system",
+            "content": "Answer briefly."
+          },
+          {
+            "role": "user",
+            "content": "What is the capital of France?"
+          }
+        ],
+        "max_output_tokens": 8
+      },
+      "request_sha256": "234624e7f022b664ef9293ef3fd987994e74c7759be67faacb6a0d6b6b047399",
+      "original_request": {
+        "file": "samples/requests/system.json",
+        "sha256": "d96fd56ea374abe2f2c4fb7e7bbaeef43d83160d320b04c70f0f120bf88fe9f8"
+      },
+      "reference": {
+        "file": "samples/golden-transcripts.json",
+        "sha256": "9bba3c56cd1ef374c4260fa42f72bea292a26de0fcdfec870c7941422dd61782",
+        "trace_id": "system"
+      },
+      "expected": {
+        "prompt_ids": [
+          1,
+          6,
+          24131,
+          708,
+          40131,
+          21923,
+          523,
+          7,
+          708,
+          6,
+          6423,
+          708,
+          3493,
+          856,
+          779,
+          5706,
+          803,
+          4481,
+          540,
+          7,
+          708,
+          6,
+          64015,
+          708
+        ],
+        "tokens": [
+          41677,
+          7
+        ],
+        "text": "Paris",
+        "finish_reason": "STOP"
+      }
+    },
+    {
+      "id": "multiturn",
+      "request": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "What is 1 + 1?"
+          },
+          {
+            "role": "assistant",
+            "content": "2"
+          },
+          {
+            "role": "user",
+            "content": "And 2 + 2?"
+          }
+        ],
+        "max_output_tokens": 8
+      },
+      "request_sha256": "c77f4ac332a0a9e5cc40e073db6d31e00beec46758b5a83a826f955309d06ed3",
+      "original_request": {
+        "file": "samples/requests/multiturn.json",
+        "sha256": "8a9d24ffbdc3e9208797dfbf55611ecfc4cb252384d9a3117befcae0bc070b5d"
+      },
+      "reference": {
+        "file": "samples/golden-transcripts.json",
+        "sha256": "9bba3c56cd1ef374c4260fa42f72bea292a26de0fcdfec870c7941422dd61782",
+        "trace_id": "multiturn"
+      },
+      "expected": {
+        "prompt_ids": [
+          1,
+          6,
+          6423,
+          708,
+          3493,
+          856,
+          730,
+          526,
+          2011,
+          730,
+          526,
+          540,
+          7,
+          708,
+          6,
+          64015,
+          708,
+          527,
+          7,
+          708,
+          6,
+          6423,
+          708,
+          4483,
+          730,
+          527,
+          2011,
+          730,
+          527,
+          540,
+          7,
+          708,
+          6,
+          64015,
+          708
+        ],
+        "tokens": [
+          528,
+          7
+        ],
+        "text": "3",
+        "finish_reason": "STOP"
+      }
+    }
+  ],
+  "timing": {
+    "clock": "monotonic_ns",
+    "e2e": "Before ctg_session_begin through successful drained ctg_pull and ctg_session_end return; input serialization, fidelity validation, artifact hashing and sample-file writes excluded. Includes host payload decoding/result release.",
+    "ttft": "Same start to return of ctg_pull carrying the first nonempty Delta; application-visible text latency, not first model token or prefill kernel time.",
+    "final": "Same start to return of ctg_pull carrying Final.",
+    "drain": "Same start to return of successful ctg_pull with null result after Final.",
+    "percentiles": "Nearest rank: sorted values at ceil(p*n)-1; 30 measured samples equal-weight, 10 per case.",
+    "startup": "ctg_open wall time separately; includes its internal preflight, process launch, checkpoint verification and model load. Prior artifact hashing warms filesystem cache; not cold boot/load."
+  },
+  "rss": {
+    "interval_ms": 100,
+    "method": "Linux /proc VmRSS and VmHWM; PID plus starttime and exact worker main/pack-dir mapping; Python consumer and JVM reported separately. Sampled RSS is an observed lower bound on transient peak; VmHWM covers process lifetime.",
+    "instrumentation": "RSS polling, Python payload decoding and file writes between requests can affect timing; no zero-overhead claim."
+  },
+  "limitations": [
+    "Only this fixed short-prompt/at-most-eight-generated-token mix; no long-context or sustained-load qualification.",
+    "Generated-token counts include EOS; text Delta events are not per-token timestamps. No prefill/decode-kernel throughput is inferred.",
+    "The matching multi-turn answer 3 is wrong; this is output fidelity, not task quality.",
+    "Three warmups do not prove JVM/JIT or thermal steady state. No cache flush, CPU pinning, governor or firmware changes.",
+    "Native CPU/JVM path only; no NPU or IREE acceleration claim."
+  ],
+  "measured_on": "Linux AArch64 CPU, external Java 21",
+  "methodology": "artifacts/evaluation/native-abi-workload.json"
+}

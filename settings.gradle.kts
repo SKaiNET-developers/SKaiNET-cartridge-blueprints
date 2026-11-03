@@ -40,3 +40,20 @@ include(":blueprints:detection-yolov8-iree")
 // whatever `materializeCartridge` has produced locally (AGPL weights never enter the repo).
 // The Compose demo graduated to SKaiNET-examples/VisionDemo.
 include(":apps:detection-yolov8-demo")
+
+// Independent source dependency while LFM2 is unreleased. No proof-workspace
+// source paths or duplicate profile/model classes are included by this recipe.
+providers.gradleProperty("lfm2TransformersCheckout").orNull?.let { checkout ->
+    includeBuild(checkout) {
+        dependencySubstitution {
+            substitute(module("sk.ainet.transformers:skainet-transformers-inference-lfm2"))
+                .using(project(":llm-inference:lfm2"))
+            substitute(module("sk.ainet.transformers:skainet-transformers-runtime-klfm2"))
+                .using(project(":llm-runtime:klfm2"))
+        }
+    }
+}
+include(":blueprints:generator-lfm25-350m-skainet")
+
+include(":runtimes:lfm2-jvm")
+include(":blueprints:generator-lfm25-350m-iree")
