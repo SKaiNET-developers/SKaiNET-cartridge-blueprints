@@ -283,8 +283,9 @@
           "size": 8432745
         }
       ],
-      "license": "NOASSERTION",
-      "redistribution": "restricted",
+      "license": "Apache-2.0 WITH LLVM-exception AND BSD-3-Clause",
+      "license_url": "https://github.com/iree-org/iree/blob/v3.11.0/LICENSE",
+      "redistribution": "allowed",
       "revision": "3.11.0"
     },
     {
@@ -298,8 +299,9 @@
           "size": 14018462
         }
       ],
-      "license": "NOASSERTION",
-      "redistribution": "restricted",
+      "license": "BSD-3-Clause AND MIT AND Zlib AND Apache-2.0 AND BSD-3-Clause-Attribution AND GPL-3.0-or-later WITH GCC-exception-3.1",
+      "license_url": "https://github.com/numpy/numpy/blob/v2.2.6/LICENSE.txt",
+      "redistribution": "allowed",
       "revision": "2.2.6"
     },
     {
@@ -313,8 +315,9 @@
           "size": 4951313
         }
       ],
-      "license": "NOASSERTION",
-      "redistribution": "restricted",
+      "license": "Apache-2.0 AND MPL-2.0",
+      "license_url": "https://github.com/jax-ml/ml_dtypes/blob/v0.5.3/LICENSE",
+      "redistribution": "allowed",
       "revision": "0.5.3"
     }
   ],
