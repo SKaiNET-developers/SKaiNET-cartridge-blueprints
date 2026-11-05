@@ -2,8 +2,6 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-import zipfile
-from unittest.mock import patch
 import prepare
 
 
@@ -21,37 +19,56 @@ class GpuPackagingTests(unittest.TestCase):
         path.write_text(json.dumps(value))
         return path
 
-    def wheel(self, entries):
-        path = self.root / 'test.whl'
-        with zipfile.ZipFile(path, 'w') as archive:
-            for name, content in entries: archive.writestr(name, content)
-        pins = self.json('pins.json', {'python':'3.12','platform':'linux-aarch64',
-            'wheels':[{'source':'test','file':path.name,**prepare.identity(path)}]})
-        return path, pins
+    def runtime_build(self, **overrides):
+        directory = self.root / 'iree-out'
+        (directory / 'licenses').mkdir(parents=True, exist_ok=True)
+        (directory / 'licenses/LICENSE.iree').write_bytes(b'Apache-2.0 WITH LLVM-exception text')
+        (directory / 'licenses/LICENSE.flatcc').write_bytes(b'Apache-2.0 text')
+        files = []
+        for name in (prepare.IREE_RUN_MODULE, 'iree-benchmark-module-linux-arm64'):
+            tool = directory / name
+            tool.write_bytes(b'aarch64-elf:' + name.encode())
+            files.append({'file': name, **{'sha256': prepare.identity(tool)['sha256'],
+                                           'size_bytes': prepare.identity(tool)['size_bytes']}})
+        report = {'schema_version': 1, 'builder_image': 'skainet/iree-linux-arm64',
+                  'iree_version': prepare.IREE_VERSION, 'iree_git_commit': prepare.IREE_SOURCE_COMMIT,
+                  'target_triple': 'aarch64-linux-gnu', 'vulkan': True,
+                  'hal_drivers': ['local-task', 'local-sync', 'vulkan'],
+                  'license': prepare.IREE_LICENSE, 'license_files': 'licenses/', 'files': files}
+        report.update(overrides)
+        (directory / prepare.IREE_BUILD_REPORT).write_text(json.dumps(report))
+        return directory
 
-    def test_wheels_are_hash_verified_and_extracted_without_installers(self):
-        _, pins = self.wheel([('namespace/pkg/module.py', b'value = 1\n'),('package.dist-info/LICENSE',b'MIT')])
-        prepare.extract_wheels(self.root,pins,self.root/'out/packages')
-        self.assertEqual(b'value = 1\n',(self.root/'out/packages/namespace/pkg/module.py').read_bytes())
-        self.assertTrue((self.root/'out/python-wheels.json').is_file())
+    def test_native_runtime_is_hash_verified_and_staged_with_licenses(self):
+        directory = self.runtime_build()
+        prepare.stage_iree_runtime(directory, self.root / 'out')
+        staged = self.root / 'out' / prepare.IREE_RUN_MODULE
+        self.assertTrue(staged.is_file())
+        self.assertEqual(b'Apache-2.0 WITH LLVM-exception text', (self.root / 'out/licenses/LICENSE.iree').read_bytes())
+        self.assertTrue((self.root / 'out' / prepare.IREE_BUILD_REPORT).is_file())
 
-    def test_wheel_escape_or_collision_never_overwrites_files(self):
-        _,pins=self.wheel([('../escape',b'bad')])
-        with self.assertRaises(ValueError):prepare.extract_wheels(self.root,pins,self.root/'out')
-        self.assertFalse((self.root/'escape').exists())
-        _,pins=self.wheel([('module.py',b'new')]); (self.root/'out').mkdir(exist_ok=True)
-        existing=self.root/'out/module.py';existing.write_bytes(b'old')
-        with self.assertRaises(FileExistsError):prepare.extract_wheels(self.root,pins,self.root/'out')
-        self.assertEqual(b'old',existing.read_bytes())
+    def test_native_runtime_tamper_or_overwrite_is_rejected(self):
+        directory = self.runtime_build()
+        (directory / prepare.IREE_RUN_MODULE).write_bytes(b'tampered')
+        with self.assertRaises(ValueError): prepare.stage_iree_runtime(directory, self.root / 'out')
+        directory = self.runtime_build()
+        existing = self.root / 'out' / prepare.IREE_RUN_MODULE
+        existing.parent.mkdir(parents=True, exist_ok=True); existing.write_bytes(b'old')
+        with self.assertRaises(FileExistsError): prepare.stage_iree_runtime(directory, self.root / 'out')
+        self.assertEqual(b'old', existing.read_bytes())
 
-    def test_wheel_hash_or_wrong_python_abi_is_rejected(self):
-        wheel,pins=self.wheel([('module.py',b'x')]);wheel.write_bytes(wheel.read_bytes()+b'changed')
-        with self.assertRaises(ValueError):prepare.extract_wheels(self.root,pins,self.root/'out')
-        data=prepare.read(pins);data['python']='3.11';pins.write_text(json.dumps(data))
-        with self.assertRaises(ValueError):prepare.extract_wheels(self.root,pins,self.root/'out')
+    def test_native_runtime_report_pins_are_enforced(self):
+        for overrides in ({'iree_version': '3.12.0'}, {'iree_git_commit': 'f' * 40},
+                          {'target_triple': 'aarch64-linux-android'}, {'vulkan': False},
+                          {'builder_image': 'other/image'}, {'files': []}):
+            directory = self.runtime_build(**overrides)
+            with self.assertRaises(ValueError): prepare.stage_iree_runtime(directory, self.root / ('out-' + next(iter(overrides))))
+        directory = self.runtime_build()
+        (directory / 'licenses/LICENSE.iree').unlink()
+        with self.assertRaises(ValueError): prepare.stage_iree_runtime(directory, self.root / 'out-license')
 
     def test_private_settings_reject_missing_or_cpu_device_selection(self):
-        data={'model_directory':str(self.root),'wheel_directory':str(self.root),'device_uri':'vulkan://test'}
+        data={'model_directory':str(self.root),'device_uri':'vulkan://test'}
         path=self.json('settings.json',data)
         self.assertEqual('vulkan://test',prepare.settings(path)['device_uri'])
         for uri in ('','vulkan://','local-task://0'):
@@ -109,10 +126,12 @@ class GpuPackagingTests(unittest.TestCase):
         prepare.place(source,out/'worker.jar',prepare.identity(source));source.write_bytes(b'rebuilt')
         self.assertEqual(b'original',(out/'worker.jar').read_bytes())
 
-    def test_worker_uses_package_backend_context64_and_external_python(self):
+    def test_worker_uses_native_backend_context64_and_no_python(self):
         value=prepare.worker_configuration('vulkan://explicit')
-        self.assertEqual('iree-vulkan',value['backend']);self.assertEqual(64,value['context_window_tokens'])
-        self.assertEqual('LFM2_PYTHON_EXECUTABLE',value['python_executable_env']);self.assertNotIn('model_dir',value)
+        self.assertEqual('iree-native-vulkan',value['backend']);self.assertEqual(64,value['context_window_tokens'])
+        self.assertEqual('artifacts/iree/'+prepare.IREE_RUN_MODULE,value['iree_run_module'])
+        self.assertNotIn('python_executable_env',value);self.assertNotIn('python_package_dir',value)
+        self.assertNotIn('model_dir',value)
         self.assertEqual(6,len(value['metadata_sha256']))
 
 

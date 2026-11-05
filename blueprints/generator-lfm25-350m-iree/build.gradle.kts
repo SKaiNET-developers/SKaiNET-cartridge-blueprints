@@ -84,7 +84,6 @@ require(runId.matches(Regex("[A-Za-z0-9][A-Za-z0-9_-]*"))) { "gpuRun must be a s
 val run = layout.buildDirectory.dir("runs/$runId")
 val recipeFile = layout.projectDirectory.file("blueprint.json")
 val helper = layout.projectDirectory.file("scripts/prepare.py")
-val wheels = layout.projectDirectory.file("runtime-wheels.json")
 val sharedRuntime = project(":runtimes:lfm2-jvm")
 val nativeSource = sharedRuntime.layout.projectDirectory.dir("native")
 val nativeBuilder = sharedRuntime.layout.projectDirectory.file("scripts/build_native.py")
@@ -112,11 +111,11 @@ val workerLibrariesPath = installer.get().destinationDir.resolve("lib").absolute
 
 val preparePreviewProfile = tasks.register<Exec>("preparePreviewProfile") {
     group = "cartridge blueprint"
-    description = "Verifies original source and wheel pins and records explicit private Vulkan selection; this preview is unmeasured."
-    inputs.files(recipeFile, helper, wheels, settingsFile)
+    description = "Verifies original source pins and records explicit private Vulkan selection; this preview is unmeasured."
+    inputs.files(recipeFile, helper, settingsFile)
     outputs.files(preview, run.map { it.file("profile/preview-status.json") })
     commandLine("python3", helper.asFile.absolutePath, "profile", "--settings", settingsFile.get(),
-        "--blueprint", recipeFile.asFile.absolutePath, "--wheels", wheels.asFile.absolutePath,
+        "--blueprint", recipeFile.asFile.absolutePath,
         "--output", preview.get().asFile.absolutePath)
 }
 blueprint { profileFile.set(preview); outputDir.set(run.map { it.dir("materialized") }) }
@@ -150,6 +149,25 @@ val exportGeneration = tasks.register<JavaExec>("exportGeneration") {
         this.config.set(modelConfig); checkpoint.set(model); destination.set(exported)
     })
 }
+// The native IREE runtime (iree-run-module, license set, provenance report) is
+// source-built through the pinned skainet/iree-linux-arm64 image. A prior build
+// can be reused with -Plfm2IreeRuntime=/absolute/path/to/out; prepare re-verifies
+// the report pins and every file digest either way.
+val ireeRuntimeRoot = run.map { it.dir("iree-runtime") }
+val preparedIreeRuntime = providers.gradleProperty("lfm2IreeRuntime").orNull
+val selectedIreeRuntime =
+    if (preparedIreeRuntime == null) ireeRuntimeRoot.map { it.dir("out") }
+    else layout.dir(providers.provider { File(preparedIreeRuntime) })
+val buildIreeRuntime = tasks.register<Exec>("buildIreeRuntime") {
+    group = "cartridge blueprint"
+    description = "Source-builds the native IREE runtime tools (aarch64 glibc, Vulkan HAL), upstream license set and provenance report via skainet/iree-linux-arm64."
+    val wrapper = toolsCheckout.map { File(it).resolve("bin/iree-run") }
+    inputs.files(wrapper)
+    outputs.dir(ireeRuntimeRoot)
+    doFirst { ireeRuntimeRoot.get().asFile.mkdirs() }
+    workingDir(ireeRuntimeRoot.get().asFile)
+    commandLine(wrapper.get().absolutePath, "linux-arm64", "build-runtime", "--vulkan")
+}
 val compileGeneration = tasks.register<Exec>("compileGeneration") {
     group = "cartridge blueprint"
     if (preparedExport == null) dependsOn(exportGeneration)
@@ -164,10 +182,12 @@ val compileGeneration = tasks.register<Exec>("compileGeneration") {
 }
 val prepareGpuExecution = tasks.register<Exec>("prepareGpuExecution") {
     group = "cartridge blueprint"; dependsOn(buildNativeRuntime, compileGeneration, installer, "blueprintFetch")
+    if (preparedIreeRuntime == null) dependsOn(buildIreeRuntime)
     description = "Stages an explicitly unqualified complete-GPU candidate with actual build products and no original-weight duplicate."
-    inputs.files(helper,wheels,settingsFile); inputs.dir(workerLibraries); inputs.dir(compiled); inputs.dir(descriptors); inputs.dir(nativeOutput)
+    inputs.files(helper,settingsFile); inputs.dir(workerLibraries); inputs.dir(compiled); inputs.dir(descriptors); inputs.dir(nativeOutput); inputs.dir(selectedIreeRuntime)
     outputs.dir(execution)
-    commandLine("python3",helper.asFile.absolutePath,"prepare","--settings",settingsFile.get(),"--wheels",wheels.asFile.absolutePath,
+    commandLine("python3",helper.asFile.absolutePath,"prepare","--settings",settingsFile.get(),
+        "--iree-runtime",selectedIreeRuntime.get().asFile.absolutePath,
         "--worker-libs",workerLibrariesPath,"--bundle",compiled.get().asFile.absolutePath,
         "--descriptor",descriptors.get().file("descriptor.json").asFile.absolutePath,
         "--canonical-descriptor",descriptors.get().file("descriptor.canonical.json").asFile.absolutePath,
@@ -193,8 +213,7 @@ blueprint {
     product("gpu-range-audit-dump", prepared.map { it.file("artifacts/gpu/vulkan-range-audit.json.all.txt") })
     product("gpu-range-audit-flatbuffer", prepared.map { it.file("artifacts/gpu/vulkan-range-audit.json.flatbuffer-json.json") })
     product("gpu-range-auditor", prepared.map { it.file("artifacts/gpu/verify_vulkan_ranges.py") })
-    product("python-packages", prepared.map { it.dir("artifacts/python") })
-    product("python-wheels", prepared.map { it.file("artifacts/python-wheels.json") })
+    product("iree-native-runtime", prepared.map { it.dir("artifacts/iree") })
     product("metadata", prepared.map { it.dir("artifacts/metadata") })
     product("worker-jars", prepared.map { it.dir("artifacts/jvm/lib") })
     product("worker-config", prepared.map { it.file("artifacts/runtime/worker.json") })

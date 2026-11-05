@@ -8,11 +8,15 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import shutil
-import stat
 import zipfile
 
 REVISION = "9e6c6ccf47cd318696e137d381a7ded8fe4df09f"
 MODEL_LICENSE = "LicenseRef-LFM-Open-License-1.0"
+IREE_LICENSE = "Apache-2.0 WITH LLVM-exception"
+IREE_VERSION = "3.11.0"
+IREE_SOURCE_COMMIT = "e4a3b0405d7d23554da26403658d0e8c3c5ecf25"
+IREE_RUN_MODULE = "iree-run-module-linux-arm64"
+IREE_BUILD_REPORT = "iree-runtime-build.json"
 MODEL_FILES = {
     "model.safetensors": (708984464, "1c9c77a4471a7f590f85240f74ed1fc26df7fbde88c3006724e2f93ca993ea4e"),
     "config.json": (1281, "720b43d6ddc2ed25be23eed355aefcf342434a176dedad23dbe0a5e3ac24bbb8"),
@@ -142,11 +146,11 @@ CANONICAL = ".provenance/descriptor.canonical.json"
 
 def settings(path: Path) -> dict:
     value = read(path)
-    if set(value) != {"model_directory", "wheel_directory", "device_uri"}:
-        raise ValueError("Private settings require model_directory, wheel_directory and explicit device_uri only")
+    if set(value) != {"model_directory", "device_uri"}:
+        raise ValueError("Private settings require model_directory and explicit device_uri only")
     if not isinstance(value["device_uri"], str) or not value["device_uri"].startswith("vulkan://") or not value["device_uri"][9:]:
         raise ValueError("Select an explicit Vulkan device URI; no CPU fallback exists")
-    for name in ("model_directory", "wheel_directory"):
+    for name in ("model_directory",):
         value[name] = Path(value[name]).resolve(strict=True)
         if not value[name].is_dir(): raise ValueError("Expected local directory: " + name)
     return value
@@ -155,11 +159,7 @@ def profile(args):
     source = settings(args.settings)
     bp = read(args.blueprint)
     verify_model(source["model_directory"])
-    wheel_sources = read(args.wheels)["wheels"]
     mirrors = {"liquid-lfm25-350m": source["model_directory"].as_uri() + "/"}
-    for item in wheel_sources:
-        verify(source["wheel_directory"] / item["file"], item)
-        mirrors[item["source"]] = source["wheel_directory"].as_uri() + "/"
     value = {"spec_version": "0.4", "kind": "materialization-profile",
              "blueprint": {"id": bp["id"], "version": bp["version"], "digest": "sha256:" + sha(args.blueprint)},
              "target": "linux-aarch64-vulkan", "cartridge": {"id": bp["id"] + "-linux-aarch64-vulkan", "version": bp["version"]},
@@ -176,27 +176,35 @@ def descriptor_pair(raw: Path, compact: Path):
         raise ValueError("Expected the explicit context64 Vulkan descriptor")
     return value
 
-def extract_wheels(directory: Path, pins: Path, output: Path):
-    entries = read(pins)
-    if entries.get("python") != "3.12" or entries.get("platform") != "linux-aarch64": raise ValueError("Unexpected Python ABI")
-    for record in entries["wheels"]:
-        wheel = directory / safe_relative(record["file"]); verify(wheel, record)
-        with zipfile.ZipFile(wheel) as archive:
-            seen = set()
-            for member in archive.infolist():
-                name = member.filename.rstrip("/"); relative = safe_relative(name)
-                if name in seen: raise ValueError("Duplicate wheel path")
-                seen.add(name)
-                mode = member.external_attr >> 16
-                if stat.S_ISLNK(mode): raise ValueError("Wheel symlinks are not supported")
-                if member.file_size > 128 * 1024 * 1024: raise ValueError("Wheel member exceeds bounded extraction size")
-                target = output / relative
-                if member.is_dir(): target.mkdir(parents=True, exist_ok=True); continue
-                # Namespace directories may overlap, files may not. Never execute wheel installers.
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with archive.open(member) as incoming, target.open("xb") as outgoing:
-                    shutil.copyfileobj(incoming, outgoing)
-    write_json(output.parent / "python-wheels.json", entries)
+def stage_iree_runtime(directory: Path, output: Path):
+    # The source-built native runtime (skainet/iree-linux-arm64 build-runtime output):
+    # provenance report, aarch64 glibc binaries and the upstream license set. Every
+    # file is verified against the report before and after staging; the license set
+    # must carry the IREE notice text the retired Python wheel never shipped.
+    report_path = directory / IREE_BUILD_REPORT
+    report = read(report_path)
+    if report.get("builder_image") != "skainet/iree-linux-arm64" or report.get("iree_version") != IREE_VERSION:
+        raise ValueError("Expected the pinned skainet/iree-linux-arm64 " + IREE_VERSION + " build report")
+    if report.get("iree_git_commit") != IREE_SOURCE_COMMIT:
+        raise ValueError("IREE runtime was built from an unpinned source revision")
+    if report.get("target_triple") != "aarch64-linux-gnu" or report.get("vulkan") is not True:
+        raise ValueError("Expected an aarch64-linux-gnu runtime build with the Vulkan HAL driver")
+    if report.get("license") != IREE_LICENSE:
+        raise ValueError("Unexpected IREE runtime license declaration")
+    files = report.get("files") or []
+    if IREE_RUN_MODULE not in [item.get("file") for item in files]:
+        raise ValueError("Native runtime build is missing " + IREE_RUN_MODULE)
+    for record in files:
+        tool = directory / safe_relative(record["file"])
+        expected = {"sha256": record["sha256"], "size_bytes": record["size_bytes"]}
+        place(tool, output / safe_relative(record["file"]), expected)
+    licenses = directory / "licenses"
+    if not (licenses / "LICENSE.iree").is_file():
+        raise ValueError("Native runtime build must stage the IREE license text")
+    for text in sorted(licenses.iterdir()):
+        if text.is_symlink() or not text.is_file(): raise ValueError("License set must contain regular files only")
+        place(text, output / "licenses" / text.name, identity(text))
+    place(report_path, output / IREE_BUILD_REPORT, identity(report_path))
 
 def verify_bundle(directory: Path):
     runtime = read(directory / "runtime-manifest.json")
@@ -239,8 +247,11 @@ def verify_bundle(directory: Path):
     return runtime
 
 def worker_configuration(device: str):
-    return {"backend":"iree-vulkan", "metadata_dir":"artifacts/metadata", "bundle_dir":"artifacts/gpu",
-            "python_package_dir":"artifacts/python", "python_executable_env":"LFM2_PYTHON_EXECUTABLE", "device_uri":device,
+    # The native configuration shape: no Python executable, no package directory.
+    # The shared JVM worker's native IREE backend is a pending gate; until it lands
+    # the worker rejects this configuration, which is the intended fail-closed state.
+    return {"backend":"iree-native-vulkan", "metadata_dir":"artifacts/metadata", "bundle_dir":"artifacts/gpu",
+            "iree_runtime_dir":"artifacts/iree", "iree_run_module":"artifacts/iree/" + IREE_RUN_MODULE, "device_uri":device,
             "context_window_tokens":64,"checkpoint_sha256":MODEL_FILES["model.safetensors"][1],
             "metadata_sha256":{n:v[1] for n,v in MODEL_FILES.items() if n != "model.safetensors"},
             "decoder_policy":"HUGGING_FACE_5_COMPAT","default_max_output_tokens":8,"max_output_tokens":32}
@@ -261,28 +272,29 @@ def prepare(args):
     mappings.update({"artifacts/metadata/"+n:source["model_directory"]/n for n in MODEL_FILES if n != "model.safetensors"})
     mappings.update({"artifacts/gpu/"+p.name:p for p in args.bundle.iterdir() if p.is_file()})
     for relative,path in mappings.items(): place(path,args.output/safe_relative(relative),identity(path))
-    extract_wheels(source["wheel_directory"],args.wheels,args.output/"artifacts/python")
+    stage_iree_runtime(args.iree_runtime,args.output/"artifacts/iree")
     write_json(args.output/"artifacts/runtime/worker.json",worker_configuration(source["device_uri"]))
     entries = closure(args.output)
     write_json(args.output/"execution.json",{"schema_version":1,"status":"unqualified_full_gpu_candidate","GPU_execution":False,
         "cpu_model_fallback":False,"pack_files":entries,"descriptor_canonical":{"file":CANONICAL,**identity(args.output/CANONICAL)},
-        "external_dependencies":{"java":"JAVA_HOME/bin/java (21, jdk.incubator.vector)","python":"LFM2_PYTHON_EXECUTABLE (3.12)","vulkan_device":source["device_uri"]},
-        "pending_gates":["full GPU numerical/state/generation parity","actual frontend and final C ABI generation","exact-artifact target measurement","independent acceptance","actual materialization and final-pack revalidation"]})
+        "external_dependencies":{"java":"JAVA_HOME/bin/java (21, jdk.incubator.vector)","vulkan_device":source["device_uri"]},
+        "pending_gates":["native IREE runtime integration in the shared JVM worker (replaces the retired Python worker lane)","full GPU numerical/state/generation parity","actual frontend and final C ABI generation","exact-artifact target measurement","independent acceptance","actual materialization and final-pack revalidation"]})
     write_json(args.output/"manifest.json",{"schema_version":"evaluation-execution-v1","kind":"unsigned-evaluation-stage",
         "id":descriptor["id"],"version":descriptor["version"],"effective_license":"NOASSERTION","digest_alg":"sha256",
         "descriptor_digest":"sha256:"+sha(args.output/CANONICAL),"signatures_present":False,"status":"unqualified_full_gpu_candidate",
         "artifacts":[{"path":x["file"],"digest":"sha256:"+x["sha256"],"size":x["size_bytes"],
                       "role":"runtime" if x["file"]==RUNTIME else "descriptor" if x["file"]=="descriptor.json" else
                              "weights" if x["file"]=="artifacts/gpu/model.irpa" else "model" if x["file"]=="artifacts/gpu/model.vmfb" else "other",
-                      "license":MODEL_LICENSE if x["file"].startswith(("artifacts/metadata/","artifacts/gpu/")) else "NOASSERTION"} for x in entries]})
+                      "license":MODEL_LICENSE if x["file"].startswith(("artifacts/metadata/","artifacts/gpu/")) else
+                                IREE_LICENSE if x["file"].startswith("artifacts/iree/") else "NOASSERTION"} for x in entries]})
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__); sub=parser.add_subparsers(dest="command",required=True)
     p=sub.add_parser("profile")
-    for name in ("settings","blueprint","wheels","output"):p.add_argument("--"+name,type=Path,required=True)
+    for name in ("settings","blueprint","output"):p.add_argument("--"+name,type=Path,required=True)
     p.set_defaults(action=profile)
     p=sub.add_parser("prepare")
-    for name in ("settings","wheels","worker-libs","bundle","descriptor","canonical-descriptor","native-library","native-build-report","compiler-report","native-license","output"):
+    for name in ("settings","iree-runtime","worker-libs","bundle","descriptor","canonical-descriptor","native-library","native-build-report","compiler-report","native-license","output"):
         p.add_argument("--"+name,type=Path,required=True)
     p.set_defaults(action=prepare)
     args=parser.parse_args();args.action(args);print(json.dumps({"status":"complete","command":args.command,"qualified":False}))

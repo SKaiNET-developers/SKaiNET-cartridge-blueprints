@@ -3,7 +3,7 @@
   "kind": "blueprint",
   "id": "generator-lfm25-350m-iree",
   "version": "0.1.0-eval",
-  "description": "Source-built complete cached LFM2.5-350M generation on an explicitly selected Vulkan device through StableHLO/IREE, persistent Python and JVM workers, llm/v1, and the POSIX Runtime ABI. Full-model GPU target qualification is pending; source build does not authorize a qualified cartridge.",
+  "description": "Source-built complete cached LFM2.5-350M generation on an explicitly selected Vulkan device through StableHLO/IREE, a persistent JVM worker with a source-built native IREE runtime (no Python on the target), llm/v1, and the POSIX Runtime ABI. Full-model GPU target qualification and the native-runtime worker integration are pending; source build does not authorize a qualified cartridge.",
   "license": "NOASSERTION",
   "descriptor_template": {
     "family": "lfm2-hybrid",
@@ -108,8 +108,8 @@
         "name": "linux"
       },
       "driver": {
-        "name": "Vulkan; external Java 21 and Python 3.12",
-        "note": "One active generation per cartridge. Set JAVA_HOME and LFM2_PYTHON_EXECUTABLE; device URI is fixed by the private profile. Complete model and hybrid state execute on Vulkan; no CPU model fallback. Compiled context capacity is 64 tokens. Target qualification must verify at least 64 MiB storage-buffer ranges and 65535 workgroups per dimension against this compiled policy."
+        "name": "Vulkan; external Java 21",
+        "note": "One active generation per cartridge. Set JAVA_HOME; device URI is fixed by the private profile. Complete model and hybrid state execute on Vulkan through the staged native IREE runtime; no CPU model fallback and no Python on the target. Compiled context capacity is 64 tokens. Target qualification must verify at least 64 MiB storage-buffer ranges and 65535 workgroups per dimension against this compiled policy."
       }
     },
     "attributes": {
@@ -201,9 +201,9 @@
       "stop_token_ids": [
         7
       ],
-      "runtime_architecture": "POSIX C ABI -> persistent JVM llm/v1 worker -> persistent IREE Vulkan Python worker",
+      "runtime_architecture": "POSIX C ABI -> persistent JVM llm/v1 worker -> source-built native IREE runtime (worker integration pending)",
       "external_java_runtime": true,
-      "external_python_runtime": true,
+      "external_python_runtime": false,
       "iree_runtime_version": "3.11.0",
       "cpu_model_fallback": false,
       "state_location": "device",
@@ -273,52 +273,20 @@
       "redistribution": "restricted"
     },
     {
-      "name": "iree-python-runtime",
+      "name": "iree-runtime-source",
       "role": "runtime",
-      "uri": "https://files.pythonhosted.org/packages/10/21/4e7907106c2ebef71f607ed9b6250b6337c4fedec3a230d84b1912d04e70",
+      "uri": "https://raw.githubusercontent.com/iree-org/iree/e4a3b0405d7d23554da26403658d0e8c3c5ecf25",
+      "revision": "e4a3b0405d7d23554da26403658d0e8c3c5ecf25",
       "files": [
         {
-          "path": "iree_base_runtime-3.11.0-cp312-abi3-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
-          "digest": "sha256:7b428bebe14ba5f16f838c6651c3d3ed8ff36c1933c0ec212c2dc8d212a0e919",
-          "size": 8432745
+          "path": "LICENSE",
+          "digest": "sha256:579fa63489ca4714793e90fa778b320f84527d7ebee37f1798db487e80c13cc0",
+          "size": 12719
         }
       ],
-      "license": "Apache-2.0 WITH LLVM-exception AND BSD-3-Clause",
+      "license": "Apache-2.0 WITH LLVM-exception",
       "license_url": "https://github.com/iree-org/iree/blob/v3.11.0/LICENSE",
-      "redistribution": "allowed",
-      "revision": "3.11.0"
-    },
-    {
-      "name": "numpy",
-      "role": "runtime",
-      "uri": "https://files.pythonhosted.org/packages/f8/35/8c80729f1ff76b3921d5c9487c7ac3de9b2a103b1cd05e905b3090513510",
-      "files": [
-        {
-          "path": "numpy-2.2.6-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
-          "digest": "sha256:f2618db89be1b4e05f7a1a847a9c1c0abd63e63a1607d892dd54668dd92faf87",
-          "size": 14018462
-        }
-      ],
-      "license": "BSD-3-Clause AND MIT AND Zlib AND Apache-2.0 AND BSD-3-Clause-Attribution AND GPL-3.0-or-later WITH GCC-exception-3.1",
-      "license_url": "https://github.com/numpy/numpy/blob/v2.2.6/LICENSE.txt",
-      "redistribution": "allowed",
-      "revision": "2.2.6"
-    },
-    {
-      "name": "ml-dtypes",
-      "role": "runtime",
-      "uri": "https://files.pythonhosted.org/packages/cf/89/11af9b0f21b99e6386b6581ab40fb38d03225f9de5f55cf52097047e2826",
-      "files": [
-        {
-          "path": "ml_dtypes-0.5.3-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
-          "digest": "sha256:1db60c154989af253f6c4a34e8a540c2c9dce4d770784d426945e09908fbb177",
-          "size": 4951313
-        }
-      ],
-      "license": "Apache-2.0 AND MPL-2.0",
-      "license_url": "https://github.com/jax-ml/ml_dtypes/blob/v0.5.3/LICENSE",
-      "redistribution": "allowed",
-      "revision": "0.5.3"
+      "redistribution": "allowed"
     }
   ],
   "inputs": [
@@ -368,8 +336,10 @@
       "image": "skainet/iree-compiler:3.11.0",
       "description": "Immutable inspected image ID plus source-mounted SKaiNET-IREE-tools wrapper from an explicit checkout; wrapper SHA recorded."
     },
-    "python": {
-      "version": "3.12"
+    "iree-linux-arm64": {
+      "version": "3.11.0",
+      "image": "skainet/iree-linux-arm64:3.11.0",
+      "description": "Source-builds the native IREE runtime tools, the upstream license set and a provenance report (git commit, HAL drivers, per-file SHA-256) for glibc Linux AArch64. Replaces the retired Python runtime wheels; the Dockerized source tree is pinned at the recorded iree-runtime-source revision."
     },
     "shared-lfm2-runtime": {
       "version": "0.1.0-SNAPSHOT",
@@ -390,8 +360,8 @@
           "name": "linux"
         },
         "driver": {
-          "name": "Vulkan; external Java 21 and Python 3.12",
-          "note": "One active generation per cartridge. Set JAVA_HOME and LFM2_PYTHON_EXECUTABLE; device URI is fixed by the private profile. Complete model and hybrid state execute on Vulkan; no CPU model fallback. Compiled context capacity is 64 tokens. Target qualification must verify at least 64 MiB storage-buffer ranges and 65535 workgroups per dimension against this compiled policy."
+          "name": "Vulkan; external Java 21",
+          "note": "One active generation per cartridge. Set JAVA_HOME; device URI is fixed by the private profile. Complete model and hybrid state execute on Vulkan through the staged native IREE runtime; no CPU model fallback and no Python on the target. Compiled context capacity is 64 tokens. Target qualification must verify at least 64 MiB storage-buffer ranges and 65535 workgroups per dimension against this compiled policy."
         }
       }
     }
@@ -402,16 +372,24 @@
       "kind": "fetch",
       "tool": "blueprint-plugin",
       "uses": [
-        "liquid-lfm25-350m",
-        "iree-python-runtime",
-        "numpy",
-        "ml-dtypes"
+        "liquid-lfm25-350m"
       ],
       "produces": [
-        "checkpoint-sources",
-        "runtime-wheels"
+        "checkpoint-sources"
       ],
-      "description": "Resolve original checkpoint and three exact Python3.12 ARM64 wheels using digest verification."
+      "description": "Resolve the original checkpoint using digest verification."
+    },
+    {
+      "id": "build-iree-runtime",
+      "kind": "build-runtime",
+      "tool": "iree-linux-arm64",
+      "uses": [
+        "iree-runtime-source"
+      ],
+      "produces": [
+        "iree-native-runtime"
+      ],
+      "description": "Source-build iree-run-module/iree-benchmark-module (aarch64 glibc, Vulkan HAL), the upstream license set and the provenance report from the pinned IREE tree embedded in the toolchain image. No Python is required on the target."
     },
     {
       "id": "export-generation",
@@ -466,6 +444,7 @@
       "uses": [
         "gpu-bundle",
         "native-runtime",
+        "iree-native-runtime",
         "worker-jars"
       ],
       "produces": [
@@ -488,13 +467,11 @@
   ],
   "outputs": [
     {
-      "from": "python-packages",
+      "from": "iree-native-runtime",
       "role": "other",
-      "path": "artifacts/python/",
+      "path": "artifacts/iree/",
       "derived_from": [
-        "iree-python-runtime",
-        "numpy",
-        "ml-dtypes"
+        "iree-runtime-source"
       ]
     },
     {
@@ -547,16 +524,6 @@
       "path": "artifacts/evaluation/gpu-qualification.json",
       "derived_from": [
         "gpu-qualification"
-      ]
-    },
-    {
-      "from": "python-wheels",
-      "role": "other",
-      "path": "artifacts/python-wheels.json",
-      "derived_from": [
-        "iree-python-runtime",
-        "numpy",
-        "ml-dtypes"
       ]
     },
     {
@@ -676,6 +643,11 @@
       "id": "exact-artifact-measurements",
       "kind": "conformance",
       "description": "Pending independently validated full-model device measurements bound to exact execution files; no copied timing numbers or full ctg-conform claim."
+    },
+    {
+      "id": "native-runtime-worker-integration",
+      "kind": "conformance",
+      "description": "Pending: the shared JVM worker executes the compiled bundle through the staged native IREE runtime; the retired Python worker lane is not part of the pack, and the staged worker configuration fails closed until the native backend is implemented and qualified."
     },
     {
       "id": "signed-release",
