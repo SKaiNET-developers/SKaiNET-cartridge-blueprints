@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "model": {
+    "repository": "LiquidAI/LFM2.5-350M",
+    "revision": "9e6c6ccf47cd318696e137d381a7ded8fe4df09f",
+    "checkpoint_sha256": "1c9c77a4471a7f590f85240f74ed1fc26df7fbde88c3006724e2f93ca993ea4e"
+  },
+  "scope": "Exact existing Hugging Face 5.0 reference traces; extracted without executing or altering generation. No task-quality claim; the multi-turn answer remains incorrect.",
+  "source_evidence": [
+    {
+      "kind": "full_model_reference_fixture",
+      "sha256": "32580c0604452f88a8ad07d4c3afabf053f9a9449f907ae7420662c67564567f"
+    },
+    {
+      "kind": "chat_reference_fixture",
+      "sha256": "8d254d4e47f8bbb9bca4a3d87fa7c39759e6786cf4aba25f4329974711b31d51"
+    }
+  ],
+  "cases": {
+    "arithmetic": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is 2 + 2?"
+        }
+      ],
+      "max_new_tokens": 8,
+      "prompt_ids": [
+        1,
+        6,
+        6423,
+        708,
+        3493,
+        856,
+        730,
+        527,
+        2011,
+        730,
+        527,
+        540,
+        7,
+        708,
+        6,
+        64015,
+        708
+      ],
+      "expected_generated_ids": [
+        527,
+        2011,
+        730,
+        527,
+        1051,
+        730,
+        529,
+        7
+      ],
+      "expected_decoded_completion_skip_special_tokens": "2 + 2 = 4"
+    },
+    "system": {
+      "messages": [
+        {
+          "role": "system",
+          "content": "Answer briefly."
+        },
+        {
+          "role": "user",
+          "content": "What is the capital of France?"
+        }
+      ],
+      "max_new_tokens": 8,
+      "prompt_ids": [
+        1,
+        6,
+        24131,
+        708,
+        40131,
+        21923,
+        523,
+        7,
+        708,
+        6,
+        6423,
+        708,
+        3493,
+        856,
+        779,
+        5706,
+        803,
+        4481,
+        540,
+        7,
+        708,
+        6,
+        64015,
+        708
+      ],
+      "expected_generated_ids": [
+        41677,
+        7
+      ],
+      "expected_decoded_completion_skip_special_tokens": "Paris"
+    },
+    "multiturn": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is 1 + 1?"
+        },
+        {
+          "role": "assistant",
+          "content": "2"
+        },
+        {
+          "role": "user",
+          "content": "And 2 + 2?"
+        }
+      ],
+      "max_new_tokens": 8,
+      "prompt_ids": [
+        1,
+        6,
+        6423,
+        708,
+        3493,
+        856,
+        730,
+        526,
+        2011,
+        730,
+        526,
+        540,
+        7,
+        708,
+        6,
+        64015,
+        708,
+        527,
+        7,
+        708,
+        6,
+        6423,
+        708,
+        4483,
+        730,
+        527,
+        2011,
+        730,
+        527,
+        540,
+        7,
+        708,
+        6,
+        64015,
+        708
+      ],
+      "expected_generated_ids": [
+        528,
+        7
+      ],
+      "expected_decoded_completion_skip_special_tokens": "3"
+    }
+  }
+}

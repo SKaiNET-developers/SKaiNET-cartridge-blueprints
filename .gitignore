@@ -45,3 +45,7 @@ materialized/
 !.env.example
 *.pem
 *.key
+
+# Python source-only recipe checks
+__pycache__/
+*.pyc

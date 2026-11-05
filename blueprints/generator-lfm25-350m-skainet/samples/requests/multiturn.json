@@ -1,0 +1,18 @@
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is 1 + 1?"
+    },
+    {
+      "role": "assistant",
+      "content": "2"
+    },
+    {
+      "role": "user",
+      "content": "And 2 + 2?"
+    }
+  ],
+  "max_new_tokens": 8,
+  "decoder_policy": "HUGGING_FACE_5_COMPAT"
+}

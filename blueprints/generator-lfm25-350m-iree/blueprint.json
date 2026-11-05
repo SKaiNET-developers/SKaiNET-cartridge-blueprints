@@ -1,0 +1,658 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "generator-lfm25-350m-iree",
+  "version": "0.1.0-eval",
+  "description": "Source-built complete cached LFM2.5-350M generation on an explicitly selected Vulkan device through StableHLO/IREE, a persistent JVM worker with a source-built native IREE runtime (no Python on the target), llm/v1, and the POSIX Runtime ABI. Full-model GPU target qualification and the native-runtime worker integration are pending; source build does not authorize a qualified cartridge.",
+  "license": "NOASSERTION",
+  "descriptor_template": {
+    "family": "lfm2-hybrid",
+    "execution_mode": "native",
+    "modality": "text",
+    "task": "generation",
+    "model": {
+      "name": "lfm2.5-350m",
+      "variant": "bf16-source-fp32-vulkan-cached64"
+    },
+    "io": {
+      "mode": "streaming",
+      "input": {
+        "dtype": "utf8-json",
+        "shape": [
+          null
+        ]
+      },
+      "output": {
+        "dtype": "utf8-json",
+        "shape": [
+          null
+        ],
+        "output_schema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "prompt_ids"
+              ],
+              "properties": {
+                "type": {
+                  "const": "ready"
+                },
+                "prompt_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "text"
+              ],
+              "properties": {
+                "type": {
+                  "const": "delta"
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "text",
+                "finish_reason",
+                "tokens"
+              ],
+              "properties": {
+                "type": {
+                  "const": "final"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "finish_reason": {
+                  "enum": [
+                    "STOP",
+                    "LENGTH"
+                  ]
+                },
+                "tokens": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "requirements": {
+      "needs_accelerator": true,
+      "os": {
+        "name": "linux"
+      },
+      "driver": {
+        "name": "Vulkan; external Java 21",
+        "note": "One active generation per cartridge. Set JAVA_HOME; device URI is fixed by the private profile. Complete model and hybrid state execute on Vulkan through the staged native IREE runtime; no CPU model fallback and no Python on the target. Compiled context capacity is 64 tokens. Target qualification must verify at least 64 MiB storage-buffer ranges and 65535 workgroups per dimension against this compiled policy."
+      }
+    },
+    "attributes": {
+      "task_profile": "llm/v1",
+      "native_runtime_abi": "0.1",
+      "context_window_tokens": 64,
+      "max_output_tokens": 32,
+      "default_max_output_tokens": 8,
+      "vocab_size": 65536,
+      "assigned_token_count": 64402,
+      "supports_tool_calling": false,
+      "supports_json_mode": false,
+      "temperature": 0,
+      "top_k": 1,
+      "top_p": 1,
+      "decoder_policy": "HUGGING_FACE_5_COMPAT",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "prefixItems": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "role",
+                  "content"
+                ],
+                "properties": {
+                  "role": {
+                    "enum": [
+                      "system",
+                      "user",
+                      "assistant"
+                    ]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                }
+              }
+            ],
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "content"
+              ],
+              "properties": {
+                "role": {
+                  "enum": [
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32
+          },
+          "temperature": {
+            "type": "number",
+            "const": 0
+          },
+          "top_k": {
+            "type": "integer",
+            "const": 1
+          },
+          "top_p": {
+            "type": "number",
+            "const": 1
+          }
+        }
+      },
+      "model_revision": "9e6c6ccf47cd318696e137d381a7ded8fe4df09f",
+      "stop_token_ids": [
+        7
+      ],
+      "runtime_architecture": "POSIX C ABI -> persistent JVM llm/v1 worker -> source-built native IREE runtime (worker integration pending)",
+      "external_java_runtime": true,
+      "external_python_runtime": false,
+      "iree_runtime_version": "3.11.0",
+      "cpu_model_fallback": false,
+      "state_location": "device",
+      "embedding_shard_rows": [
+        8192,
+        8192,
+        8192,
+        8192,
+        8192,
+        8192,
+        8192,
+        8192
+      ],
+      "vulkan_binding_range_policy_bytes": 67108864,
+      "vulkan_workgroup_count_policy": [
+        65535,
+        65535,
+        65535
+      ]
+    }
+  },
+  "sources": [
+    {
+      "name": "liquid-lfm25-350m",
+      "role": "weights",
+      "uri": "hf://LiquidAI/LFM2.5-350M",
+      "revision": "9e6c6ccf47cd318696e137d381a7ded8fe4df09f",
+      "files": [
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:1c9c77a4471a7f590f85240f74ed1fc26df7fbde88c3006724e2f93ca993ea4e",
+          "size": 708984464
+        },
+        {
+          "path": "config.json",
+          "digest": "sha256:720b43d6ddc2ed25be23eed355aefcf342434a176dedad23dbe0a5e3ac24bbb8",
+          "size": 1281
+        },
+        {
+          "path": "generation_config.json",
+          "digest": "sha256:0ec7d228c4de7e3453e98bf6910c7eb7841e87fede63ea11c0f75a5c64e1c3c3",
+          "size": 134
+        },
+        {
+          "path": "tokenizer_config.json",
+          "digest": "sha256:3701f370c70034d06e28947ff51c1063983393319f429e3ce58f06a45fae67cc",
+          "size": 595
+        },
+        {
+          "path": "chat_template.jinja",
+          "digest": "sha256:ba551d58630afa3190b1be3602e28301f3d2e9bbac978dfc49d6d825171648b6",
+          "size": 5487
+        },
+        {
+          "path": "tokenizer.json",
+          "digest": "sha256:df1d8d5ec5d091b460562ffd545e4a5e91d17d4a0db7ebe733be34ed374377bd",
+          "size": 4733389
+        },
+        {
+          "path": "LICENSE",
+          "digest": "sha256:4d28ca14dedc0b3d0fcc2b3339f0e79931faa33874f3d24f522183a8fc70068c",
+          "size": 10574
+        }
+      ],
+      "license": "LicenseRef-LFM-Open-License-1.0",
+      "license_url": "https://huggingface.co/LiquidAI/LFM2.5-350M/blob/9e6c6ccf47cd318696e137d381a7ded8fe4df09f/LICENSE",
+      "redistribution": "restricted"
+    },
+    {
+      "name": "iree-runtime-source",
+      "role": "runtime",
+      "uri": "https://raw.githubusercontent.com/iree-org/iree/e4a3b0405d7d23554da26403658d0e8c3c5ecf25",
+      "revision": "e4a3b0405d7d23554da26403658d0e8c3c5ecf25",
+      "files": [
+        {
+          "path": "LICENSE",
+          "digest": "sha256:579fa63489ca4714793e90fa778b320f84527d7ebee37f1798db487e80c13cc0",
+          "size": 12719
+        }
+      ],
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "license_url": "https://github.com/iree-org/iree/blob/v3.11.0/LICENSE",
+      "redistribution": "allowed"
+    }
+  ],
+  "inputs": [
+    {
+      "name": "gpu-qualification",
+      "role": "calibration",
+      "required": true,
+      "description": "Independent full-generation GPU qualification binding the exact source-built execution closure; no attention-only or source-build substitute."
+    }
+  ],
+  "toolchain": {
+    "blueprint-plugin": {
+      "version": "2dcf43edbd65d7db29d75056d47151ca6178e602",
+      "coordinates": "sk.ainet.cartridge.blueprint",
+      "description": "Pinned reference source plugin; unmodified included build."
+    },
+    "workspace-gradle": {
+      "version": "9.7.0",
+      "description": "Repository wrapper builds this JVM worker and source-only native recipe."
+    },
+    "kotlin": {
+      "version": "2.4.21"
+    },
+    "java": {
+      "version": "21"
+    },
+    "skainet-transformers": {
+      "version": "0.63.3",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-bom"
+    },
+    "skainet-engine": {
+      "version": "0.62.0",
+      "coordinates": "sk.ainet.core:skainet-backend-cpu"
+    },
+    "llm-v1": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.profiles:llm-v1",
+      "description": "Actual profile sources pinned from SKaiNET-cartridge-blueprints 2dcf43edbd65d7db29d75056d47151ca6178e602; local JVM source build."
+    },
+    "native-compiler": {
+      "version": "clang-19",
+      "image": "skainet/iree-compiler:3.11.0",
+      "description": "Existing pinned ARM64 Linux compiler image; Docker network disabled. Compiles the eager POSIX bridge, without using IREE for inference."
+    },
+    "iree": {
+      "version": "3.11.0",
+      "image": "skainet/iree-compiler:3.11.0",
+      "description": "Immutable inspected image ID plus source-mounted SKaiNET-IREE-tools wrapper from an explicit checkout; wrapper SHA recorded."
+    },
+    "iree-linux-arm64": {
+      "version": "3.11.0",
+      "image": "skainet/iree-linux-arm64:3.11.0",
+      "description": "Source-builds the native IREE runtime tools, the upstream license set and a provenance report (git commit, HAL drivers, per-file SHA-256) for glibc Linux AArch64. Replaces the retired Python runtime wheels; the Dockerized source tree is pinned at the recorded iree-runtime-source revision."
+    },
+    "shared-lfm2-runtime": {
+      "version": "0.1.0-SNAPSHOT",
+      "coordinates": ":runtimes:lfm2-jvm"
+    }
+  },
+  "targets": [
+    {
+      "id": "linux-aarch64-vulkan",
+      "target": {
+        "hardware": "Linux AArch64 Vulkan",
+        "abi": "aarch64-linux-gnu",
+        "accelerator": "vulkan"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "os": {
+          "name": "linux"
+        },
+        "driver": {
+          "name": "Vulkan; external Java 21",
+          "note": "One active generation per cartridge. Set JAVA_HOME; device URI is fixed by the private profile. Complete model and hybrid state execute on Vulkan through the staged native IREE runtime; no CPU model fallback and no Python on the target. Compiled context capacity is 64 tokens. Target qualification must verify at least 64 MiB storage-buffer ranges and 65535 workgroups per dimension against this compiled policy."
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "liquid-lfm25-350m"
+      ],
+      "produces": [
+        "checkpoint-sources"
+      ],
+      "description": "Resolve the original checkpoint using digest verification."
+    },
+    {
+      "id": "build-iree-runtime",
+      "kind": "build-runtime",
+      "tool": "iree-linux-arm64",
+      "uses": [
+        "iree-runtime-source"
+      ],
+      "produces": [
+        "iree-native-runtime"
+      ],
+      "description": "Source-build iree-run-module/iree-benchmark-module (aarch64 glibc, Vulkan HAL), the upstream license set and the provenance report from the pinned IREE tree embedded in the toolchain image. No Python is required on the target."
+    },
+    {
+      "id": "export-generation",
+      "kind": "export",
+      "tool": "skainet-transformers",
+      "uses": [
+        "checkpoint-sources"
+      ],
+      "produces": [
+        "generation-export"
+      ],
+      "description": "Run Lfm2GenerationExportCli from the actual model dependency: full hybrid decoder, context64, balanced FP32, sharded tied embedding, external FP32 parameters."
+    },
+    {
+      "id": "compile-generation",
+      "kind": "compile",
+      "tool": "iree",
+      "uses": [
+        "generation-export"
+      ],
+      "produces": [
+        "gpu-bundle"
+      ],
+      "description": "Convert IRPA and compile complete FP32 cached-step StableHLO for generic Vulkan with bounded resource flags and no binding fusion. Independently audit every explicit VM HAL binding/allocation and dispatch grid before publishing runtime-manifest.json. Unsupported expressions fail closed."
+    },
+    {
+      "id": "build-worker",
+      "kind": "compile",
+      "tool": "workspace-gradle",
+      "produces": [
+        "worker-jars",
+        "worker-config"
+      ],
+      "description": "Build shared llm/v1 adapter and package-owned IREE backend factory; retain actual compiled context64."
+    },
+    {
+      "id": "build-native",
+      "kind": "build-runtime",
+      "tool": "native-compiler",
+      "produces": [
+        "native-runtime",
+        "native-build-report",
+        "native-compiler-report",
+        "native-license"
+      ],
+      "description": "Compile shared POSIX Runtime ABI source embedding actual canonical and pretty plugin descriptor bytes."
+    },
+    {
+      "id": "qualify",
+      "kind": "measure",
+      "tool": "workspace-gradle",
+      "uses": [
+        "gpu-bundle",
+        "native-runtime",
+        "iree-native-runtime",
+        "worker-jars"
+      ],
+      "produces": [
+        "gpu-qualification"
+      ],
+      "description": "Pending actual complete GPU generation correctness and measurements for the exact provisional execution closure. Source build never substitutes for this target gate."
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "gpu-qualification"
+      ],
+      "produces": [
+        "unsigned-pack"
+      ],
+      "description": "Requires accepted full GPU evidence and exact unchanged execution closure. No signing or license acceptance is fabricated."
+    }
+  ],
+  "outputs": [
+    {
+      "from": "iree-native-runtime",
+      "role": "other",
+      "path": "artifacts/iree/",
+      "derived_from": [
+        "iree-runtime-source"
+      ]
+    },
+    {
+      "from": "metadata",
+      "role": "other",
+      "path": "artifacts/metadata/",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "native-runtime",
+      "role": "runtime",
+      "path": "artifacts/runtime/liblfm2_cartridge.so",
+      "derived_from": []
+    },
+    {
+      "from": "worker-jars",
+      "role": "other",
+      "path": "artifacts/jvm/lib/",
+      "derived_from": []
+    },
+    {
+      "from": "worker-config",
+      "role": "other",
+      "path": "artifacts/runtime/worker.json",
+      "derived_from": []
+    },
+    {
+      "from": "native-build-report",
+      "role": "other",
+      "path": "artifacts/runtime/native-build.json",
+      "derived_from": []
+    },
+    {
+      "from": "native-compiler-report",
+      "role": "other",
+      "path": "artifacts/runtime/compiler-container.json",
+      "derived_from": []
+    },
+    {
+      "from": "native-license",
+      "role": "other",
+      "path": "artifacts/runtime/LICENSE.upstream",
+      "derived_from": []
+    },
+    {
+      "from": "gpu-qualification",
+      "role": "calibration",
+      "path": "artifacts/evaluation/gpu-qualification.json",
+      "derived_from": [
+        "gpu-qualification"
+      ]
+    },
+    {
+      "from": "gpu-module",
+      "role": "model",
+      "path": "artifacts/gpu/model.vmfb",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "gpu-parameters",
+      "role": "weights",
+      "path": "artifacts/gpu/model.irpa",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "gpu-runtime-manifest",
+      "role": "other",
+      "path": "artifacts/gpu/runtime-manifest.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "gpu-export-provenance",
+      "role": "other",
+      "path": "artifacts/gpu/source-export-manifest.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "gpu-contract",
+      "role": "other",
+      "path": "artifacts/gpu/generation-contract.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "gpu-compilation-report",
+      "role": "other",
+      "path": "artifacts/gpu/compilation-report.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "gpu-parameter-log",
+      "role": "other",
+      "path": "artifacts/gpu/parameters.log",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "gpu-compiler-log",
+      "role": "other",
+      "path": "artifacts/gpu/vulkan.log",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "gpu-compiler-wrapper",
+      "role": "other",
+      "path": "artifacts/gpu/compiler-entrypoint.sh",
+      "derived_from": []
+    },
+    {
+      "from": "gpu-compiler-driver",
+      "role": "other",
+      "path": "artifacts/gpu/compile-driver.py",
+      "derived_from": []
+    },
+    {
+      "from": "gpu-range-audit",
+      "role": "other",
+      "path": "artifacts/gpu/vulkan-range-audit.json",
+      "derived_from": []
+    },
+    {
+      "from": "gpu-range-audit-log",
+      "role": "other",
+      "path": "artifacts/gpu/range-audit.log",
+      "derived_from": []
+    },
+    {
+      "from": "gpu-range-audit-dump",
+      "role": "other",
+      "path": "artifacts/gpu/vulkan-range-audit.json.all.txt",
+      "derived_from": []
+    },
+    {
+      "from": "gpu-range-audit-flatbuffer",
+      "role": "other",
+      "path": "artifacts/gpu/vulkan-range-audit.json.flatbuffer-json.json",
+      "derived_from": []
+    },
+    {
+      "from": "gpu-range-auditor",
+      "role": "other",
+      "path": "artifacts/gpu/verify_vulkan_ranges.py",
+      "derived_from": []
+    }
+  ],
+  "verification": [
+    {
+      "id": "full-gpu-generation",
+      "kind": "golden",
+      "description": "Pending complete prompt prefill and cached generation on selected Vulkan device, exact reference conversations, hybrid state reset/replay, cancellation and final-pack C ABI consumer. No attention-only substitution."
+    },
+    {
+      "id": "exact-artifact-measurements",
+      "kind": "conformance",
+      "description": "Pending independently validated full-model device measurements bound to exact execution files; no copied timing numbers or full ctg-conform claim."
+    },
+    {
+      "id": "native-runtime-worker-integration",
+      "kind": "conformance",
+      "description": "Pending: the shared JVM worker executes the compiled bundle through the staged native IREE runtime; the retired Python worker lane is not part of the pack, and the staged worker configuration fails closed until the native backend is implemented and qualified."
+    },
+    {
+      "id": "signed-release",
+      "kind": "conformance",
+      "description": "Pending effective license resolution, builder-owned signing and complete spec conformance."
+    }
+  ]
+}

@@ -1,0 +1,731 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "generator-lfm25-350m-skainet",
+  "version": "0.1.0-eval",
+  "description": "Source-built POSIX Runtime ABI and persistent eager CPU JVM llm/v1 worker for LFM2.5-350M. New materializations require exact-artifact measurement evidence. Recipe code is MIT; third-party JVM dependencies are declared as digest-pinned sources. Outputs remain unsigned diagnostics until signing and full conformance are supplied.",
+  "license": "MIT",
+  "descriptor_template": {
+    "family": "lfm2-hybrid",
+    "execution_mode": "eager",
+    "modality": "text",
+    "task": "generation",
+    "model": {
+      "name": "lfm2.5-350m",
+      "variant": "bf16-source-fp32-balanced-jvm"
+    },
+    "io": {
+      "mode": "streaming",
+      "input": {
+        "dtype": "utf8-json",
+        "shape": [
+          null
+        ]
+      },
+      "output": {
+        "dtype": "utf8-json",
+        "shape": [
+          null
+        ],
+        "output_schema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "prompt_ids"
+              ],
+              "properties": {
+                "type": {
+                  "const": "ready"
+                },
+                "prompt_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "text"
+              ],
+              "properties": {
+                "type": {
+                  "const": "delta"
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "text",
+                "finish_reason",
+                "tokens"
+              ],
+              "properties": {
+                "type": {
+                  "const": "final"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "finish_reason": {
+                  "enum": [
+                    "STOP",
+                    "LENGTH"
+                  ]
+                },
+                "tokens": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "requirements": {
+      "needs_accelerator": false,
+      "os": {
+        "name": "linux"
+      },
+      "driver": {
+        "name": "external Java 21 with jdk.incubator.vector",
+        "min_version": "21",
+        "note": "One active generation per cartridge. Set JAVA_HOME to an external Java 21 runtime with jdk.incubator.vector. Inference executes in a persistent JVM CPU worker; no NPU acceleration is claimed."
+      }
+    },
+    "attributes": {
+      "task_profile": "llm/v1",
+      "native_runtime_abi": "0.1",
+      "context_window_tokens": 2048,
+      "max_output_tokens": 256,
+      "default_max_output_tokens": 32,
+      "vocab_size": 65536,
+      "assigned_token_count": 64402,
+      "supports_tool_calling": false,
+      "supports_json_mode": false,
+      "temperature": 0,
+      "top_k": 1,
+      "top_p": 1,
+      "decoder_policy": "HUGGING_FACE_5_COMPAT",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "prefixItems": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "role",
+                  "content"
+                ],
+                "properties": {
+                  "role": {
+                    "enum": [
+                      "system",
+                      "user",
+                      "assistant"
+                    ]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                }
+              }
+            ],
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "content"
+              ],
+              "properties": {
+                "role": {
+                  "enum": [
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "max_output_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256
+          },
+          "temperature": {
+            "type": "number",
+            "const": 0
+          },
+          "top_k": {
+            "type": "integer",
+            "const": 1
+          },
+          "top_p": {
+            "type": "number",
+            "const": 1
+          }
+        }
+      },
+      "model_revision": "9e6c6ccf47cd318696e137d381a7ded8fe4df09f",
+      "stop_token_ids": [
+        7
+      ],
+      "runtime_architecture": "POSIX native C ABI with persistent JVM worker over framed stdin/stdout",
+      "external_java_runtime": true
+    }
+  },
+  "sources": [
+    {
+      "name": "liquid-lfm25-350m",
+      "role": "weights",
+      "uri": "hf://LiquidAI/LFM2.5-350M",
+      "revision": "9e6c6ccf47cd318696e137d381a7ded8fe4df09f",
+      "files": [
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:1c9c77a4471a7f590f85240f74ed1fc26df7fbde88c3006724e2f93ca993ea4e",
+          "size": 708984464
+        },
+        {
+          "path": "config.json",
+          "digest": "sha256:720b43d6ddc2ed25be23eed355aefcf342434a176dedad23dbe0a5e3ac24bbb8",
+          "size": 1281
+        },
+        {
+          "path": "generation_config.json",
+          "digest": "sha256:0ec7d228c4de7e3453e98bf6910c7eb7841e87fede63ea11c0f75a5c64e1c3c3",
+          "size": 134
+        },
+        {
+          "path": "tokenizer_config.json",
+          "digest": "sha256:3701f370c70034d06e28947ff51c1063983393319f429e3ce58f06a45fae67cc",
+          "size": 595
+        },
+        {
+          "path": "chat_template.jinja",
+          "digest": "sha256:ba551d58630afa3190b1be3602e28301f3d2e9bbac978dfc49d6d825171648b6",
+          "size": 5487
+        },
+        {
+          "path": "tokenizer.json",
+          "digest": "sha256:df1d8d5ec5d091b460562ffd545e4a5e91d17d4a0db7ebe733be34ed374377bd",
+          "size": 4733389
+        },
+        {
+          "path": "LICENSE",
+          "digest": "sha256:4d28ca14dedc0b3d0fcc2b3339f0e79931faa33874f3d24f522183a8fc70068c",
+          "size": 10574
+        }
+      ],
+      "license": "LicenseRef-LFM-Open-License-1.0",
+      "license_url": "https://huggingface.co/LiquidAI/LFM2.5-350M/blob/9e6c6ccf47cd318696e137d381a7ded8fe4df09f/LICENSE",
+      "redistribution": "restricted"
+    },
+    {
+      "name": "skainet-engine-0.62.0",
+      "role": "other",
+      "uri": "https://repo.maven.apache.org/maven2",
+      "revision": "release-artifacts-pinned-by-digest",
+      "files": [
+        {
+          "path": "sk/ainet/core/skainet-backend-api-jvm/0.62.0/skainet-backend-api-jvm-0.62.0.jar",
+          "digest": "sha256:32797d46dc1a7e78e510b43cdd639149c4bbbd34cf3d6317b587bff626f27338",
+          "size": 125795
+        },
+        {
+          "path": "sk/ainet/core/skainet-backend-cpu-jvm/0.62.0/skainet-backend-cpu-jvm-0.62.0.jar",
+          "digest": "sha256:ae9f2cfbfe00edc91e4feab15ddb827193ed3ce774469f28715a0a75b823abec",
+          "size": 290843
+        },
+        {
+          "path": "sk/ainet/core/skainet-compile-core-jvm/0.62.0/skainet-compile-core-jvm-0.62.0.jar",
+          "digest": "sha256:c188eb8016c448f11a36609da8712620dbb6044183ae963eb35aafbf10430392",
+          "size": 89479
+        },
+        {
+          "path": "sk/ainet/core/skainet-compile-dag-jvm/0.62.0/skainet-compile-dag-jvm-0.62.0.jar",
+          "digest": "sha256:f5052b5cffe5bc9c7b99aa73c9418b74cf3791c77870f52ba7c6583b481b8d50",
+          "size": 250718
+        },
+        {
+          "path": "sk/ainet/core/skainet-compile-hlo-jvm/0.62.0/skainet-compile-hlo-jvm-0.62.0.jar",
+          "digest": "sha256:01f6196147f5b5a06bce83c496ed1de5da48baabd53b85fc46d7deda874cfe82",
+          "size": 342631
+        },
+        {
+          "path": "sk/ainet/core/skainet-compile-opt-jvm/0.62.0/skainet-compile-opt-jvm-0.62.0.jar",
+          "digest": "sha256:84fca4f0954862f777e140c91029a5e969f5fe778568994d11ed80c2ae5f2010",
+          "size": 97423
+        },
+        {
+          "path": "sk/ainet/core/skainet-frontend-core-jvm/0.62.0/skainet-frontend-core-jvm-0.62.0.jar",
+          "digest": "sha256:2b75ac8fed11d01aec6867a870f0a320958011f51a43b6e5911ad6ec8b8a49ba",
+          "size": 99085
+        },
+        {
+          "path": "sk/ainet/core/skainet-frontend-text-jvm/0.62.0/skainet-frontend-text-jvm-0.62.0.jar",
+          "digest": "sha256:aa824a20cd9a215bcddcf4dcecfc01f372a2da113242693351820bddcf794481",
+          "size": 181958
+        },
+        {
+          "path": "sk/ainet/core/skainet-io-core-jvm/0.62.0/skainet-io-core-jvm-0.62.0.jar",
+          "digest": "sha256:8741fcb5d362028db51c3c99f4f598449db79ec0da323d8c546a2e96ad874465",
+          "size": 154761
+        },
+        {
+          "path": "sk/ainet/core/skainet-io-gguf-jvm/0.62.0/skainet-io-gguf-jvm-0.62.0.jar",
+          "digest": "sha256:e44ce87101418cdecb4e5839d58edcb91ff2fce2c0f3d1982dee6c868ccc7ae7",
+          "size": 275205
+        },
+        {
+          "path": "sk/ainet/core/skainet-io-safetensors-jvm/0.62.0/skainet-io-safetensors-jvm-0.62.0.jar",
+          "digest": "sha256:d380179804b4efecfaeab6001d7dd29c334648159e2a44d2b95effd425045147",
+          "size": 125986
+        },
+        {
+          "path": "sk/ainet/core/skainet-lang-core-jvm/0.62.0/skainet-lang-core-jvm-0.62.0.jar",
+          "digest": "sha256:a3316b72c7a3ad7d4fdce119fcbfa3c21314844630dde8eaa9b9d153f3d4e4e7",
+          "size": 1672689
+        },
+        {
+          "path": "sk/ainet/core/skainet-lang-dag-jvm/0.62.0/skainet-lang-dag-jvm-0.62.0.jar",
+          "digest": "sha256:507e75c2cea0dc759bbfef7261dd3f924ef0c505fabacb830ddbc08cb5a71602",
+          "size": 65750
+        },
+        {
+          "path": "sk/ainet/core/skainet-lang-ksp-annotations-jvm/0.62.0/skainet-lang-ksp-annotations-jvm-0.62.0.jar",
+          "digest": "sha256:ca15f41b68284f80df36d189632078178ec06c9b050c98be5d1f5cd9d0c0c069",
+          "size": 12250
+        },
+        {
+          "path": "sk/ainet/core/skainet-lang-models-jvm/0.62.0/skainet-lang-models-jvm-0.62.0.jar",
+          "digest": "sha256:da9d05a0d53b088da18b6cd61aa37604d7e2044dad1ee089f8555dd61bec72c7",
+          "size": 88336
+        },
+        {
+          "path": "sk/ainet/core/skainet-model-identity-jvm/0.62.0/skainet-model-identity-jvm-0.62.0.jar",
+          "digest": "sha256:a0213424c301eef1c43f26a7d7c34f8dd4da910f550b346c6f310cf5c8a3c42d",
+          "size": 43317
+        }
+      ],
+      "license": "MIT",
+      "license_url": "https://github.com/SKaiNET-developers/SKaiNET/blob/main/LICENCE",
+      "redistribution": "allowed"
+    },
+    {
+      "name": "jopt-simple-5.0.4",
+      "role": "other",
+      "uri": "https://repo.maven.apache.org/maven2",
+      "revision": "release-artifacts-pinned-by-digest",
+      "files": [
+        {
+          "path": "net/sf/jopt-simple/jopt-simple/5.0.4/jopt-simple-5.0.4.jar",
+          "digest": "sha256:df26cc58f235f477db07f753ba5a3ab243ebe5789d9f89ecf68dd62ea9a66c28",
+          "size": 78146
+        }
+      ],
+      "license": "MIT",
+      "license_url": "https://www.opensource.org/licenses/mit-license.php",
+      "redistribution": "allowed"
+    },
+    {
+      "name": "jvm-deps-apache-2.0",
+      "role": "other",
+      "uri": "https://repo.maven.apache.org/maven2",
+      "revision": "release-artifacts-pinned-by-digest",
+      "files": [
+        {
+          "path": "org/jetbrains/annotations/23.0.0/annotations-23.0.0.jar",
+          "digest": "sha256:7b0f19724082cbfcbc66e5abea2b9bc92cf08a1ea11e191933ed43801eb3cd05",
+          "size": 29371
+        },
+        {
+          "path": "org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar",
+          "digest": "sha256:1e56d7b058d28b65abd256b8458e3885b674c1d588fa43cd7d1cbb9c7ef2b308",
+          "size": 2213560
+        },
+        {
+          "path": "org/jetbrains/kotlin/kotlin-stdlib/2.4.21/kotlin-stdlib-2.4.21.jar",
+          "digest": "sha256:bd8250210584cb659847dce9cda660f8e9906e5def7fbebcea93dc6dcb6a88a3",
+          "size": 1853315
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-benchmark-runtime-jvm/0.5.0/kotlinx-benchmark-runtime-jvm-0.5.0.jar",
+          "digest": "sha256:f44154d4f11bdca7fab7aa519e0d51df4fe3bb959f3177a42ef5603f30f49a63",
+          "size": 104145
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.11.0/kotlinx-coroutines-core-jvm-1.11.0.jar",
+          "digest": "sha256:d1d75aa01dffbb4d1c520e67e4c4e7f5f6174718e7cb4632412503f2f0e604fa",
+          "size": 1577052
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-io-bytestring-jvm/0.9.1/kotlinx-io-bytestring-jvm-0.9.1.jar",
+          "digest": "sha256:8589de0b7c476bfdd02a24641685f609ade72f5e595cf2909c168acdba7e6ba4",
+          "size": 22776
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-io-core-jvm/0.9.1/kotlinx-io-core-jvm-0.9.1.jar",
+          "digest": "sha256:765d8851d8ca694706931331b92386844800867e041b720f1f193dbda874d370",
+          "size": 153576
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.12.0/kotlinx-serialization-core-jvm-1.12.0.jar",
+          "digest": "sha256:bcfddcac76159058ba0953af05938c17111d238cd41be7191874656454d62f1a",
+          "size": 416396
+        },
+        {
+          "path": "org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.12.0/kotlinx-serialization-json-jvm-1.12.0.jar",
+          "digest": "sha256:879eb73e46cb63253ab0fa7cca4448f5c96bca1a16ff377abcb71ebab60e0631",
+          "size": 306230
+        }
+      ],
+      "license": "Apache-2.0",
+      "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
+      "redistribution": "allowed"
+    },
+    {
+      "name": "jmh-core-1.37",
+      "role": "other",
+      "uri": "https://repo.maven.apache.org/maven2",
+      "revision": "release-artifacts-pinned-by-digest",
+      "files": [
+        {
+          "path": "org/openjdk/jmh/jmh-core/1.37/jmh-core-1.37.jar",
+          "digest": "sha256:dc0eaf2bbf0036a70b60798c785d6e03a9daf06b68b8edb0f1ba9eb3421baeb3",
+          "size": 552986
+        }
+      ],
+      "license": "GPL-2.0-only WITH Classpath-exception-2.0",
+      "license_url": "https://github.com/openjdk/jmh/blob/master/LICENSE",
+      "redistribution": "allowed"
+    }
+  ],
+  "inputs": [
+    {
+      "name": "native-benchmark",
+      "role": "calibration",
+      "required": true,
+      "description": "Raw benchmark.json for the exact measured execution artifacts."
+    },
+    {
+      "name": "native-measurement-validation",
+      "role": "calibration",
+      "required": true,
+      "description": "Independent benchmark validator acceptance binding all execution artifacts."
+    },
+    {
+      "name": "benchmark-supervisor",
+      "role": "calibration",
+      "required": true,
+      "description": "Process-supervisor evidence for the raw benchmark."
+    }
+  ],
+  "toolchain": {
+    "blueprint-plugin": {
+      "version": "2dcf43edbd65d7db29d75056d47151ca6178e602",
+      "coordinates": "sk.ainet.cartridge.blueprint",
+      "description": "Pinned reference source plugin; unmodified included build."
+    },
+    "workspace-gradle": {
+      "version": "9.7.0",
+      "description": "Repository wrapper builds this JVM worker and source-only native recipe."
+    },
+    "kotlin": {
+      "version": "2.4.21"
+    },
+    "java": {
+      "version": "21"
+    },
+    "skainet-transformers": {
+      "version": "0.63.3",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-bom"
+    },
+    "skainet-engine": {
+      "version": "0.62.0",
+      "coordinates": "sk.ainet.core:skainet-backend-cpu"
+    },
+    "llm-v1": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.profiles:llm-v1",
+      "description": "Actual profile sources pinned from SKaiNET-cartridge-blueprints 2dcf43edbd65d7db29d75056d47151ca6178e602; local JVM source build."
+    },
+    "native-compiler": {
+      "version": "clang-19",
+      "image": "skainet/iree-compiler:3.11.0",
+      "description": "Existing pinned ARM64 Linux compiler image; Docker network disabled. Compiles the eager POSIX bridge, without using IREE for inference."
+    }
+  },
+  "targets": [
+    {
+      "id": "linux-aarch64",
+      "target": {
+        "hardware": "Linux AArch64 CPU",
+        "abi": "aarch64-linux-gnu",
+        "accelerator": "none"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "os": {
+          "name": "linux"
+        },
+        "driver": {
+          "name": "external Java 21 with jdk.incubator.vector",
+          "min_version": "21",
+          "note": "One active generation per cartridge. Set JAVA_HOME to an external Java 21 runtime with jdk.incubator.vector. Inference executes in a persistent JVM CPU worker; no NPU acceleration is claimed."
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "liquid-lfm25-350m"
+      ],
+      "produces": [
+        "model-weights",
+        "model-config",
+        "generation-config",
+        "tokenizer-config",
+        "chat-template",
+        "tokenizer",
+        "model-license"
+      ],
+      "description": "Fetch or reuse the seven digest-verified checkpoint files from the private local mirror."
+    },
+    {
+      "id": "build-worker",
+      "kind": "compile",
+      "tool": "workspace-gradle",
+      "produces": [
+        "worker-jars",
+        "worker-config"
+      ],
+      "description": "Build this blueprint module with installDist and generate the pinned worker configuration."
+    },
+    {
+      "id": "build-native",
+      "kind": "build-runtime",
+      "tool": "native-compiler",
+      "produces": [
+        "native-runtime",
+        "native-build-report",
+        "native-compiler-report",
+        "native-license"
+      ],
+      "description": "Resolve the descriptor with the actual plugin, then compile the actual native C ABI bridge with canonical ABI and exact pretty pack descriptor bytes embedded."
+    },
+    {
+      "id": "prepare-measurement",
+      "kind": "measure",
+      "tool": "workspace-gradle",
+      "uses": [
+        "native-runtime",
+        "worker-jars",
+        "worker-config"
+      ],
+      "produces": [
+        "measurement-workload"
+      ],
+      "description": "Stage an explicitly unmeasured provisional execution directory. Run the workload on the target Linux AArch64 host, independently validate its raw evidence and unchanged execution closure, then create the accepted materialization profile."
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "native-runtime",
+        "worker-jars",
+        "worker-config",
+        "native-benchmark",
+        "native-measurement-validation",
+        "benchmark-supervisor"
+      ],
+      "produces": [
+        "unsigned-pack"
+      ],
+      "description": "Actual pinned materializer copies the unchanged measured artifacts and evidence. A fresh destination guard preserves failed and prior outputs. No signing identity or license acceptance is fabricated."
+    }
+  ],
+  "outputs": [
+    {
+      "from": "model-weights",
+      "role": "weights",
+      "path": "artifacts/model/model.safetensors",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "model-config",
+      "role": "other",
+      "path": "artifacts/model/config.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "generation-config",
+      "role": "other",
+      "path": "artifacts/model/generation_config.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "tokenizer-config",
+      "role": "other",
+      "path": "artifacts/model/tokenizer_config.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "chat-template",
+      "role": "other",
+      "path": "artifacts/model/chat_template.jinja",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "tokenizer",
+      "role": "tokenizer",
+      "path": "artifacts/model/tokenizer.json",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "model-license",
+      "role": "other",
+      "path": "artifacts/model/LICENSE",
+      "derived_from": [
+        "liquid-lfm25-350m"
+      ]
+    },
+    {
+      "from": "native-runtime",
+      "role": "runtime",
+      "path": "artifacts/runtime/liblfm2_cartridge.so",
+      "derived_from": []
+    },
+    {
+      "from": "worker-jars",
+      "role": "other",
+      "path": "artifacts/jvm/lib/",
+      "derived_from": [
+        "skainet-engine-0.62.0",
+        "jopt-simple-5.0.4",
+        "jvm-deps-apache-2.0",
+        "jmh-core-1.37"
+      ]
+    },
+    {
+      "from": "worker-config",
+      "role": "other",
+      "path": "artifacts/runtime/worker.json",
+      "derived_from": []
+    },
+    {
+      "from": "native-build-report",
+      "role": "other",
+      "path": "artifacts/runtime/native-build.json",
+      "derived_from": []
+    },
+    {
+      "from": "native-compiler-report",
+      "role": "other",
+      "path": "artifacts/runtime/compiler-container.json",
+      "derived_from": []
+    },
+    {
+      "from": "native-license",
+      "role": "other",
+      "path": "artifacts/runtime/LICENSE.upstream",
+      "derived_from": []
+    },
+    {
+      "from": "measurement-workload",
+      "role": "calibration",
+      "path": "artifacts/evaluation/native-abi-workload.json",
+      "derived_from": []
+    },
+    {
+      "from": "native-benchmark",
+      "role": "calibration",
+      "path": "artifacts/evaluation/native-abi-benchmark.json",
+      "derived_from": [
+        "native-benchmark"
+      ]
+    },
+    {
+      "from": "native-measurement-validation",
+      "role": "calibration",
+      "path": "artifacts/evaluation/native-abi-validation.json",
+      "derived_from": [
+        "native-measurement-validation"
+      ]
+    },
+    {
+      "from": "benchmark-supervisor",
+      "role": "calibration",
+      "path": "artifacts/evaluation/native-abi-supervisor.json",
+      "derived_from": [
+        "benchmark-supervisor"
+      ]
+    }
+  ],
+  "verification": [
+    {
+      "id": "native-correctness",
+      "kind": "golden",
+      "description": "Re-run the independent real C ABI consumer on the final materialized artifacts; preserve unchanged HF exact trace gates and lifecycle checks."
+    },
+    {
+      "id": "native-performance",
+      "kind": "conformance",
+      "description": "Independent saved-report validation of exact artifact identity, raw timing rows, workload, target and external Java. Stable descriptor provenance fields avoid rebuilding the runtime after measurement; numeric results live in the hashed report. This is a bounded evidence gate, not a ctg-conform or full-spec claim."
+    },
+    {
+      "id": "sealed-cartridge",
+      "kind": "conformance",
+      "description": "Pending: license remediation, builder-owned signing, independent signature/artifact verification, full conformance and external Java distribution policy."
+    }
+  ]
+}
