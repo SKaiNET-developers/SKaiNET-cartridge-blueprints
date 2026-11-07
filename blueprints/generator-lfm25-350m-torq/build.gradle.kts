@@ -13,6 +13,7 @@ import java.security.MessageDigest
 //   ./gradlew :blueprints:generator-lfm25-350m-torq:materializeCartridge -Pprofile=profiles/<yours>.json
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.kotlinSerialization)
     id("sk.ainet.cartridge.blueprint")
 }
@@ -26,6 +27,13 @@ val lfm2TorqTransformersVersion = providers.gradleProperty("lfm2TorqTransformers
 
 kotlin {
     explicitApi()
+    // Android too: the host side of the step is the same wherever the step runs (a GPU cartridge on Android uses it).
+    android {
+        namespace = "sk.ainet.cartridge.generator.lfm25.torq"
+        compileSdk = libs.versions.androidCompileSdk.get().toInt()
+        minSdk = libs.versions.androidMinSdk.get().toInt()
+        compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+    }
     jvm { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
     linuxX64()
     linuxArm64()

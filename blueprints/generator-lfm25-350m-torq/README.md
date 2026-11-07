@@ -10,7 +10,7 @@ This module holds no model: the Kotlin API is the host side of the step contract
 from the publisher's checkpoint on your machine. The weights are under the LFM Open License v1.0, which you accept
 in your materialization profile (`license_acceptance`); the recipe never accepts it for you.
 
-## Kotlin API (`commonMain`: JVM, linuxX64, linuxArm64)
+## Kotlin API (`commonMain`: JVM, Android, linuxX64, linuxArm64)
 
 ```kotlin
 val ports = DecodeStepPorts.parse(packDir.resolve("artifacts/model/io.txt").readText())
