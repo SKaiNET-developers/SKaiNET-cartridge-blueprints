@@ -65,6 +65,9 @@ lfm2Checkout?.let { checkout ->
                 .using(project(":llm-inference:lfm2"))
             substitute(module("sk.ainet.transformers:skainet-transformers-runtime-klfm2"))
                 .using(project(":llm-runtime:klfm2"))
+            // the checkout's own BOM, so a recipe that pins an unreleased version resolves against the checkout
+            substitute(module("sk.ainet.transformers:skainet-transformers-bom"))
+                .using(project(":llm-bom"))
         }
     }
 }

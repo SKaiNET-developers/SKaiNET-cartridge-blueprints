@@ -94,4 +94,18 @@ class DecodeStepTest {
         d.reset()
         assertEquals(0, d.position)
     }
+
+    @Test
+    fun aRestoredSnapshotContinuesTheSharedPrefix() {
+        val runner = CountingRunner()
+        val d = decoder(runner)
+        d.generate(intArrayOf(0), maxNewTokens = 1, stopTokens = emptySet())
+        val prefix = d.snapshot()
+        assertEquals(1, prefix.position)
+        val first = d.generate(intArrayOf(0), maxNewTokens = 2, stopTokens = emptySet())
+        d.restore(prefix)
+        val second = d.generate(intArrayOf(0), maxNewTokens = 2, stopTokens = emptySet())
+        assertContentEquals(first.tokens, second.tokens)
+        assertEquals(listOf(0, 1, 2, 1, 2), runner.positions)
+    }
 }

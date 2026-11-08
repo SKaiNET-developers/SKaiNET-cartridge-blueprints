@@ -117,6 +117,9 @@ public class Generation(public val tokens: IntArray, public val finishReason: Fi
  * back until a [stopTokens] token, [maxNewTokens] or the compiled capacity. One instance holds one session's state;
  * [reset] starts the next.
  */
+/** A [GreedyDecoder]'s conv histories, K/V and position, taken by [GreedyDecoder.snapshot]. */
+public class DecoderSnapshot internal constructor(internal val state: Map<String, FloatArray>, public val position: Int)
+
 public class GreedyDecoder(
     private val ports: DecodeStepPorts,
     private val controls: StepControls,
@@ -136,6 +139,13 @@ public class GreedyDecoder(
 
     public fun reset() {
         state = initialState(); position = 0
+    }
+
+    /** The state after the steps so far, e.g. a shared prompt prefix, for [restore] before each prompt that continues it. */
+    public fun snapshot(): DecoderSnapshot = DecoderSnapshot(state.mapValues { it.value.copyOf() }, position)
+
+    public fun restore(snapshot: DecoderSnapshot) {
+        state = snapshot.state.mapValues { it.value.copyOf() }; position = snapshot.position
     }
 
     /** One step for [token] at the current position; returns the logits and advances. */
