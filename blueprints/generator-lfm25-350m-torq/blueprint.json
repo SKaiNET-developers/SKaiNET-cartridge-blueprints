@@ -1,0 +1,325 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "generator-lfm25-350m-torq",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Text generation with LFM2.5-350M on the Synaptics Torq NPU: one single-token decode step per call, for every position up to a fixed capacity, exported from the SKaiNET DSL with Q8_0 projections and a Q4_0 output head kept packed as block-quant matmuls, the whole graph bf16, compiled with the Torq 2.3.0 compiler to one NPU dispatch. Embedding lookup, RoPE, masks, sampling and stopping run on the host (this module's Kotlin API).",
+  "descriptor_template": {
+    "family": "lfm2-hybrid",
+    "execution_mode": "native",
+    "modality": "text",
+    "task": "generation",
+    "model": {
+      "name": "lfm2.5-350m",
+      "variant": "torq-bf16-q8_0-head-q4_0-cached64",
+      "params": 354000000,
+      "checkpoint": "LiquidAI/LFM2.5-350M",
+      "upstream": {
+        "source": "https://huggingface.co/LiquidAI/LFM2.5-350M",
+        "license": "LicenseRef-LFM-Open-License-1.0"
+      }
+    },
+    "io": {
+      "mode": "streaming",
+      "input": {
+        "dtype": "int32-token-ids",
+        "shape": [
+          null
+        ]
+      },
+      "output": {
+        "dtype": "int32-token-ids",
+        "shape": [
+          null
+        ]
+      }
+    },
+    "attributes": {
+      "state_model": "session",
+      "context_tokens": 64,
+      "weights": "Q8_0 projections, Q4_0 output head (block-quant, packed), bf16 activations",
+      "runtime_hint": {
+        "runtime": "iree",
+        "version": "Torq-fork 2.3.0",
+        "contract": "lfm2-decode-step-v1 (embedded row, cos/sin, additive mask [1, C+1], one-hot write mask [1, C, 1], conv histories and K/V as state in and out; argument order in artifacts/model/io.txt; host-side bf16 embedding rows)"
+      }
+    }
+  },
+  "sources": [
+    {
+      "name": "weights",
+      "role": "weights",
+      "uri": "hf://LiquidAI/LFM2.5-350M",
+      "revision": "9e6c6ccf47cd318696e137d381a7ded8fe4df09f",
+      "files": [
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:1c9c77a4471a7f590f85240f74ed1fc26df7fbde88c3006724e2f93ca993ea4e",
+          "size": 708984464
+        },
+        {
+          "path": "config.json",
+          "digest": "sha256:720b43d6ddc2ed25be23eed355aefcf342434a176dedad23dbe0a5e3ac24bbb8",
+          "size": 1281
+        },
+        {
+          "path": "generation_config.json",
+          "digest": "sha256:0ec7d228c4de7e3453e98bf6910c7eb7841e87fede63ea11c0f75a5c64e1c3c3",
+          "size": 134
+        },
+        {
+          "path": "tokenizer_config.json",
+          "digest": "sha256:3701f370c70034d06e28947ff51c1063983393319f429e3ce58f06a45fae67cc",
+          "size": 595
+        },
+        {
+          "path": "chat_template.jinja",
+          "digest": "sha256:ba551d58630afa3190b1be3602e28301f3d2e9bbac978dfc49d6d825171648b6",
+          "size": 5487
+        },
+        {
+          "path": "tokenizer.json",
+          "digest": "sha256:df1d8d5ec5d091b460562ffd545e4a5e91d17d4a0db7ebe733be34ed374377bd",
+          "size": 4733389
+        },
+        {
+          "path": "LICENSE",
+          "digest": "sha256:4d28ca14dedc0b3d0fcc2b3339f0e79931faa33874f3d24f522183a8fc70068c",
+          "size": 10574
+        }
+      ],
+      "license": "LicenseRef-LFM-Open-License-1.0",
+      "license_url": "https://huggingface.co/LiquidAI/LFM2.5-350M/blob/9e6c6ccf47cd318696e137d381a7ded8fe4df09f/LICENSE",
+      "redistribution": "restricted"
+    }
+  ],
+  "toolchain": {
+    "blueprint-plugin": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.blueprint"
+    },
+    "skainet-transformers": {
+      "version": "0.64.2",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-inference-lfm2",
+      "description": "Lfm2DecodeStepExportCli: verified local checkpoint -> decode_step.mlir (packed block-quant matmuls), io.txt, embed.bf16.bin, export.json (Kotlin)"
+    },
+    "iree-tools-torq": {
+      "version": "2.3.0",
+      "image": "skainet/iree-compiler-torq:2.3.0",
+      "description": "Synaptics Torq-fork iree-compile (SKaiNET-embedded-vendors synaptics-torq/docker): compile-torq with --input stablehlo-torq, which lowers the folded block-quant matmuls to Torq's mixed-quant kernel"
+    }
+  },
+  "targets": [
+    {
+      "id": "torq-sl26xx",
+      "cartridge_id": "generator-lfm25-350m-torq-sl26xx",
+      "target": {
+        "hardware": "IREE-linux-aarch64 (Synaptics SL26xx, Cortex-A55 + Torq NPU)",
+        "abi": "linux-aarch64",
+        "accelerator": "Synaptics Torq NPU (SL2610)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 900,
+        "driver": {
+          "name": "Torq-fork IREE runtime",
+          "min_version": ">=2.3.0 <2.4",
+          "note": "the module comes from the Torq 2.3.0 compiler; it is one dispatch on the torq device, about 350 MB"
+        },
+        "os": {
+          "name": "linux"
+        }
+      },
+      "params": {
+        "toolchain": "iree-tools-torq",
+        "torq_hw": "SL2610",
+        "capacity": "64",
+        "weights": "q8_0",
+        "head": "q4_0",
+        "conv": "multiply-sum",
+        "attention": "batched"
+      }
+    }
+  ],
+  "inputs": [],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "weights"
+      ],
+      "produces": [
+        "weights-files"
+      ],
+      "description": "SKaiNET data-source: hf:// at the pinned revision, SHA-256 verified, after the profile's license acceptance."
+    },
+    {
+      "id": "export",
+      "kind": "export",
+      "tool": "skainet-transformers",
+      "uses": [
+        "weights-files"
+      ],
+      "produces": [
+        "decode-step-mlir",
+        "io-table",
+        "embedding-rows",
+        "export-manifest"
+      ],
+      "params": {
+        "capacity": "params.capacity",
+        "weights": "params.weights",
+        "head": "params.head"
+      },
+      "description": "Lfm2DecodeStepExportCli: loads the checkpoint with the projections requantized (Q8_0), builds a Q4_0 copy of the tied embedding as the output head, traces the fixed-capacity decode step and folds every packed matmul (93 for LFM2.5-350M; any left unfolded fails the step). Writes the host's bf16 embedding rows."
+    },
+    {
+      "id": "torq-bf16-retype",
+      "kind": "convert",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "decode-step-mlir"
+      ],
+      "produces": [
+        "decode-step-bf16-mlir"
+      ],
+      "description": "Every f32 type to bf16, arguments and results included (Torq's f32 host fallback returns NaN); the infinities become their bf16 bits, any other f32 hex constant fails the step."
+    },
+    {
+      "id": "compile",
+      "kind": "compile",
+      "tool": "iree-tools-torq",
+      "uses": [
+        "decode-step-bf16-mlir"
+      ],
+      "produces": [
+        "decode-step-vmfb"
+      ],
+      "per_target": true,
+      "description": "compile-torq --input stablehlo-torq --target <params.torq_hw>: one torq dispatch with the weights inline."
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "decode-step-vmfb",
+        "io-table",
+        "embedding-rows",
+        "export-manifest",
+        "weights-files"
+      ],
+      "produces": [
+        "pack-dir"
+      ],
+      "description": "descriptor.json + manifest.json + artifacts/<role>/… (cartridge spec pack_dir)."
+    },
+    {
+      "id": "sign",
+      "kind": "sign",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "pack-dir"
+      ],
+      "produces": [
+        "manifest"
+      ],
+      "description": "Ed25519 over the canonical manifest, key from the profile."
+    }
+  ],
+  "outputs": [
+    {
+      "from": "decode-step-vmfb",
+      "role": "model",
+      "path": "artifacts/model/decode_step.vmfb",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "io-table",
+      "role": "model",
+      "path": "artifacts/model/io.txt",
+      "derived_from": []
+    },
+    {
+      "from": "export-manifest",
+      "role": "model",
+      "path": "artifacts/model/export.json",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "embedding-rows",
+      "role": "weights",
+      "path": "artifacts/weights/embed.bf16.bin",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "tokenizer-tokenizer",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/tokenizer.json",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "tokenizer-tokenizer-config",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/tokenizer_config.json",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "tokenizer-chat-template",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/chat_template.jinja",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "tokenizer-generation-config",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/generation_config.json",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "tokenizer-config",
+      "role": "tokenizer",
+      "path": "artifacts/tokenizer/config.json",
+      "derived_from": [
+        "weights"
+      ]
+    },
+    {
+      "from": "model-license",
+      "role": "other",
+      "path": "artifacts/license/LICENSE",
+      "derived_from": [
+        "weights"
+      ]
+    }
+  ],
+  "reference_measurements": [
+    {
+      "target": "torq-sl26xx",
+      "measured_on": "SL2610 board, Torq 2.3.0 runtime (astra-sl-torq-run-module), one decode step at position 5",
+      "performance": {
+        "decode_step_ms": 533,
+        "module_load_ms": 274,
+        "logits_cosine_to_fp32": 0.996,
+        "note": "an expectation for whoever materializes, never copied into a descriptor"
+      }
+    }
+  ]
+}

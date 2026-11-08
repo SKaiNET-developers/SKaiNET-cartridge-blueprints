@@ -36,6 +36,8 @@ include(":profiles:embedding-v1")
 include(":profiles:llm-v1")
 include(":profiles:yolo-v1")
 include(":blueprints:detection-yolov8-iree")
+// Its Kotlin API needs no LFM2 module; only the export step resolves the exporter, when it runs.
+include(":blueprints:generator-lfm25-350m-torq")
 // Hands-on demo app over that blueprint's packs. It builds without the packs; the APK bundles
 // whatever `materializeCartridge` has produced locally (AGPL weights never enter the repo).
 // The Compose demo graduated to SKaiNET-examples/VisionDemo.
@@ -63,6 +65,9 @@ lfm2Checkout?.let { checkout ->
                 .using(project(":llm-inference:lfm2"))
             substitute(module("sk.ainet.transformers:skainet-transformers-runtime-klfm2"))
                 .using(project(":llm-runtime:klfm2"))
+            // the checkout's own BOM, so a recipe that pins an unreleased version resolves against the checkout
+            substitute(module("sk.ainet.transformers:skainet-transformers-bom"))
+                .using(project(":llm-bom"))
         }
     }
 }
