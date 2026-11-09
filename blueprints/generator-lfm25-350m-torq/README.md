@@ -61,7 +61,7 @@ docker run --rm -v "$PWD:/w" -w /w skainet/iree-compiler-torq:2.3.0 \
 ```
 
 The exporter is `sk.ainet.transformers:skainet-transformers-inference-lfm2` (`-Plfm2TorqTransformersVersion`,
-default 0.64.2). Before that release, pass `-Plfm2TransformersCheckout=/path/to/SKaiNET-transformers`.
+default 0.64.2). To export with an unreleased exporter, pass `-Plfm2TransformersCheckout=/path/to/SKaiNET-transformers`.
 
 ## Reference measurement (an expectation, never copied into a descriptor)
 
