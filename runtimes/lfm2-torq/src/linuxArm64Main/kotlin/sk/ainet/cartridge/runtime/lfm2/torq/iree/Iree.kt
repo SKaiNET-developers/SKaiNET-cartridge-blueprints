@@ -1,8 +1,8 @@
 package sk.ainet.cartridge.runtime.lfm2.torq.iree
 
-import cnames.structs.hes_runtime
-import cnames.structs.hes_session
-import cnames.structs.hes_view
+import cnames.structs.skainet_iree_runtime
+import cnames.structs.skainet_iree_session
+import cnames.structs.skainet_iree_view
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -18,34 +18,34 @@ import kotlinx.cinterop.ptr
 import kotlinx.cinterop.set
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
-import sk.ainet.cartridge.runtime.lfm2.torq.native.HES_BF16
-import sk.ainet.cartridge.runtime.lfm2.torq.native.HES_F32
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_call
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_last_error
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_runtime_create
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_runtime_release
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_session_create
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_session_release
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_view_bytes
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_view_dim
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_view_element_type
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_view_from_host
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_view_rank
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_view_release
-import sk.ainet.cartridge.runtime.lfm2.torq.native.hes_view_to_host
+import sk.ainet.cartridge.runtime.lfm2.torq.native.SKAINET_IREE_BF16
+import sk.ainet.cartridge.runtime.lfm2.torq.native.SKAINET_IREE_F32
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_call
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_last_error
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_runtime_create
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_runtime_release
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_session_create
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_session_release
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_view_bytes
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_view_dim
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_view_element_type
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_view_from_host
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_view_rank
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_view_release
+import sk.ainet.cartridge.runtime.lfm2.torq.native.skainet_iree_view_to_host
 
-// The generic-session part of SKaiNET-embedded sl2610-home-even-smarter iree/…/Iree.kt (MIT), with the bf16 and f32
-// host tensors only; the C shim it calls is vendored in native/hes (native/upstream.json).
+// Derived from the generic-session part of SKaiNET-embedded's Kotlin IREE wrapper (MIT), with the bf16 and f32 host
+// tensors only; the C shim it calls is native/iree-session (native/upstream.json).
 
 /** A failure reported by the native runtime; [message] is the formatted IREE status. */
 public class IreeException(message: String) : IllegalStateException(message)
 
 @OptIn(ExperimentalForeignApi::class)
-private fun failure(what: String): Nothing = throw IreeException("$what: ${hes_last_error()?.toKString().orEmpty()}")
+private fun failure(what: String): Nothing = throw IreeException("$what: ${skainet_iree_last_error()?.toKString().orEmpty()}")
 
 @OptIn(ExperimentalForeignApi::class)
 public enum class ElementType(public val code: Int, public val bytes: Int) {
-    F32(HES_F32.toInt(), 4), BF16(HES_BF16.toInt(), 2);
+    F32(SKAINET_IREE_F32.toInt(), 4), BF16(SKAINET_IREE_BF16.toInt(), 2);
 
     public companion object {
         public fun of(code: Int): ElementType = entries.firstOrNull { it.code == code } ?: throw IreeException("unsupported element type 0x${code.toString(16)}")
@@ -87,19 +87,19 @@ public class HostTensor(public val type: ElementType, public val shape: LongArra
  */
 @OptIn(ExperimentalForeignApi::class)
 public class IreeRuntime(flags: List<String> = DEFAULT_FLAGS) : AutoCloseable {
-    private var handle: CPointer<hes_runtime>? = memScoped {
+    private var handle: CPointer<skainet_iree_runtime>? = memScoped {
         val argv = allocArrayOf(flags.map { it.cstr.ptr })
-        hes_runtime_create(argv, flags.size) ?: failure("runtime")
+        skainet_iree_runtime_create(argv, flags.size) ?: failure("runtime")
     }
 
-    private val rt: CPointer<hes_runtime> get() = handle ?: throw IreeException("runtime closed")
+    private val rt: CPointer<skainet_iree_runtime> get() = handle ?: throw IreeException("runtime closed")
 
     /** Loads [vmfb] on [device]. */
     public fun session(device: String, vmfb: String): IreeSession =
-        IreeSession(hes_session_create(rt, device, vmfb, null, null) ?: failure("session $vmfb on $device"))
+        IreeSession(skainet_iree_session_create(rt, device, vmfb, null, null) ?: failure("session $vmfb on $device"))
 
     override fun close() {
-        handle?.let { hes_runtime_release(it) }
+        handle?.let { skainet_iree_runtime_release(it) }
         handle = null
     }
 
@@ -110,44 +110,44 @@ public class IreeRuntime(flags: List<String> = DEFAULT_FLAGS) : AutoCloseable {
 
 /** One loaded module on one device. Not thread-safe: callers serialize calls per session. */
 @OptIn(ExperimentalForeignApi::class)
-public class IreeSession internal constructor(private var handle: CPointer<hes_session>?) : AutoCloseable {
-    private val s: CPointer<hes_session> get() = handle ?: throw IreeException("session closed")
+public class IreeSession internal constructor(private var handle: CPointer<skainet_iree_session>?) : AutoCloseable {
+    private val s: CPointer<skainet_iree_session> get() = handle ?: throw IreeException("session closed")
 
     /** Calls [function] (e.g. `module.decode_step`) with host tensors and returns its outputs copied back to the host. */
     public fun call(function: String, inputs: List<HostTensor>, maxOutputs: Int = 64): List<HostTensor> = memScoped {
-        val ins = allocArray<CPointerVar<hes_view>>(inputs.size.coerceAtLeast(1))
-        val outs = allocArray<CPointerVar<hes_view>>(maxOutputs)
+        val ins = allocArray<CPointerVar<skainet_iree_view>>(inputs.size.coerceAtLeast(1))
+        val outs = allocArray<CPointerVar<skainet_iree_view>>(maxOutputs)
         var produced = 0
         try {
             inputs.forEachIndexed { i, t ->
                 val dims = allocArray<LongVar>(t.shape.size.coerceAtLeast(1))
                 t.shape.forEachIndexed { d, v -> dims[d] = v }
                 ins[i] = t.bytes.usePinned { pinned ->
-                    hes_view_from_host(s, t.type.code, t.shape.size, dims, pinned.addressOf(0), t.bytes.size.convert())
+                    skainet_iree_view_from_host(s, t.type.code, t.shape.size, dims, pinned.addressOf(0), t.bytes.size.convert())
                 } ?: failure("input $i of $function")
             }
-            produced = hes_call(s, function, ins, inputs.size, outs, maxOutputs)
+            produced = skainet_iree_call(s, function, ins, inputs.size, outs, maxOutputs)
             if (produced < 0) failure("call $function")
             List(produced) { i -> toHost(outs[i]!!) }
         } finally {
-            for (i in inputs.indices) ins[i]?.let { hes_view_release(it) }
-            for (i in 0 until produced) outs[i]?.let { hes_view_release(it) }
+            for (i in inputs.indices) ins[i]?.let { skainet_iree_view_release(it) }
+            for (i in 0 until produced) outs[i]?.let { skainet_iree_view_release(it) }
         }
     }
 
-    private fun toHost(v: CPointer<hes_view>): HostTensor {
-        val type = ElementType.of(hes_view_element_type(v))
-        val shape = LongArray(hes_view_rank(v)) { hes_view_dim(v, it) }
-        val bytes = ByteArray(hes_view_bytes(v).toInt())
+    private fun toHost(v: CPointer<skainet_iree_view>): HostTensor {
+        val type = ElementType.of(skainet_iree_view_element_type(v))
+        val shape = LongArray(skainet_iree_view_rank(v)) { skainet_iree_view_dim(v, it) }
+        val bytes = ByteArray(skainet_iree_view_bytes(v).toInt())
         if (bytes.isNotEmpty()) {
-            val rc = bytes.usePinned { hes_view_to_host(s, v, it.addressOf(0), bytes.size.convert()) }
+            val rc = bytes.usePinned { skainet_iree_view_to_host(s, v, it.addressOf(0), bytes.size.convert()) }
             if (rc != 0) failure("read output")
         }
         return HostTensor(type, shape, bytes)
     }
 
     override fun close() {
-        handle?.let { hes_session_release(it) }
+        handle?.let { skainet_iree_session_release(it) }
         handle = null
     }
 }

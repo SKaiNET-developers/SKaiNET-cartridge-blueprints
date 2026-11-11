@@ -6,7 +6,7 @@
 #   /descriptors  descriptor.json and descriptor.canonical.json (read-only), resolved by the blueprint
 #   /out          an empty directory; receives
 #                   dist/lib/libiree_torq_runtime.a, dist/include/…, dist/licenses/…, dist/BUILD-INFO  (the image's runtime)
-#                   lib/libhes_iree.a          the vendored hes_iree shim (hes/, MIT)
+#                   lib/libskainet_iree.a      the IREE session shim (iree-session/, MIT)
 #                   lib/liblfm2_torq_descriptor.a  the descriptor bytes (include/lfm2_torq_descriptor.h)
 #
 # The Kotlin/Native link (runtimes/lfm2-torq, linkReleaseSharedLinuxArm64) takes the three archives from here.
@@ -19,11 +19,10 @@ cp -r "$TORQ_RUNTIME_DIST"/. "$OUT/dist/"
 CC=("$KONAN_LLVM/bin/clang" --target=aarch64-unknown-linux-gnu --sysroot="$KONAN_GCC/aarch64-unknown-linux-gnu/sysroot"
     --gcc-toolchain="$KONAN_GCC" -mcpu=cortex-a55 -O2 -fPIC -std=c11 -Wall -Werror=implicit-function-declaration)
 
-# the shim, as SKaiNET-embedded's build-dist.sh compiles it
-for f in hes_iree hes_moonshine; do
-  "${CC[@]}" -DIREE_ALLOCATOR_SYSTEM_CTL=iree_allocator_libc_ctl -I"$OUT/dist/include" -c "/src/hes/$f.c" -o "$OUT/obj/$f.o"
-done
-"$KONAN_LLVM/bin/llvm-ar" rcs "$OUT/lib/libhes_iree.a" "$OUT/obj/hes_iree.o" "$OUT/obj/hes_moonshine.o"
+# the IREE session shim
+"${CC[@]}" -DIREE_ALLOCATOR_SYSTEM_CTL=iree_allocator_libc_ctl -I"$OUT/dist/include" \
+  -c /src/iree-session/skainet_iree.c -o "$OUT/obj/skainet_iree.o"
+"$KONAN_LLVM/bin/llvm-ar" rcs "$OUT/lib/libskainet_iree.a" "$OUT/obj/skainet_iree.o"
 
 # the descriptor, as byte arrays (no escaping questions)
 python3 - /descriptors/descriptor.canonical.json /descriptors/descriptor.json "$OUT/obj/lfm2_torq_descriptor.c" <<'EOF'

@@ -41,7 +41,7 @@ val result = decoder.generate(promptIds, maxNewTokens = 32, stopTokens = setOf(7
 | `export` (`exportDecodeStep`) | `Lfm2DecodeStepExportCli` from SKaiNET-transformers: projections loaded as Q8_0, a Q4_0 head, the fixed-capacity step traced with every packed matmul folded (93; one left unfolded fails the step); writes `decode_step.mlir`, `io.txt`, `embed.bf16.bin`, `export.json` |
 | `torq-bf16-retype` (`torqBf16Retype`) | every f32 to bf16, arguments and results included: Torq's f32 host fallback returns NaN |
 | `compile` (`compileDecodeStep`) | `compile-torq --input stablehlo-torq --target SL2610` in `skainet/iree-compiler-torq:2.3.0` |
-| `build-torq-runtime` (`:runtimes:lfm2-torq:buildTorqNative`) | in `skainet/iree-runtime-torq:2.3.0`: the Torq-fork IREE runtime (built from source in the image) with its license set, the vendored `hes_iree` shim and the resolved descriptor's bytes (`resolveRuntimeDescriptor`) |
+| `build-torq-runtime` (`:runtimes:lfm2-torq:buildTorqNative`) | in `skainet/iree-runtime-torq:2.3.0`: the Torq-fork IREE runtime (built from source in the image) with its license set, the IREE session shim (`skainet_iree`) and the resolved descriptor's bytes (`resolveRuntimeDescriptor`) |
 | `build-native` (`:runtimes:lfm2-torq:linkCartridgeReleaseSharedLinuxArm64`) | Kotlin/Native: `liblfm2_torq_cartridge.so`, the Cartridge Runtime ABI 0.1 for linux-aarch64 |
 | `pack`, `sign` | the pack_dir with the runtime and its licenses, the module, port table, export manifest, embedding rows, tokenizer files and the model license |
 

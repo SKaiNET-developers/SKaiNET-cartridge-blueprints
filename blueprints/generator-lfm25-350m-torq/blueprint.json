@@ -144,7 +144,7 @@
     "iree-runtime-torq": {
       "version": "2.3.0",
       "image": "skainet/iree-runtime-torq:2.3.0",
-      "description": "The Torq-fork IREE runtime (Torq v2.3.0 and the IREE commit it pins) built from source for linux-aarch64 with the Kotlin/Native clang and sysroot (SKaiNET-embedded-vendors synaptics-torq/docker-runtime, built locally with its build.sh). runtimes/lfm2-torq/native/build-native.sh runs in it: the runtime archive and license set, the vendored hes_iree shim, the embedded descriptor."
+      "description": "The Torq-fork IREE runtime (Torq v2.3.0 and the IREE commit it pins) built from source for linux-aarch64 with the Kotlin/Native clang and sysroot (SKaiNET-embedded-vendors synaptics-torq/docker-runtime, built locally with its build.sh). runtimes/lfm2-torq/native/build-native.sh runs in it: the runtime archive and license set, the IREE session shim, the embedded descriptor."
     },
     "kotlin-native": {
       "version": "2.4.21",
@@ -255,7 +255,7 @@
         "torq-native-archives",
         "torq-runtime-licenses"
       ],
-      "description": "In skainet/iree-runtime-torq: copy the source-built Torq-fork IREE runtime archive, headers and license set; compile the vendored hes_iree shim (runtimes/lfm2-torq/native/hes, pinned in upstream.json) and the resolved descriptor's bytes for ctg_descriptor_json."
+      "description": "In skainet/iree-runtime-torq: copy the source-built Torq-fork IREE runtime archive, headers and license set; compile the IREE session shim (runtimes/lfm2-torq/native/iree-session, provenance in upstream.json) and the resolved descriptor's bytes for ctg_descriptor_json."
     },
     {
       "id": "build-native",

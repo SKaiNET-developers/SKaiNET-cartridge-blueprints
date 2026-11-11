@@ -1,7 +1,7 @@
 // liblfm2_torq_cartridge.so: the Cartridge Runtime ABI 0.1 (native/include/cartridge_abi.h) for the
 // generator-lfm25-350m-torq blueprint, as a Kotlin/Native shared library for linux-aarch64. It runs the blueprint's
 // greedy decoder (GreedyDecoder, its Kotlin API) over the decode step on the Torq NPU, in the host's process: the
-// Torq-fork IREE runtime and the hes_iree shim are linked in statically.
+// Torq-fork IREE runtime and the IREE session shim are linked in statically.
 //
 // The native parts come from source, through Docker:
 //   buildTorqNative    skainet/iree-runtime-torq (SKaiNET-embedded-vendors synaptics-torq/docker-runtime, built
@@ -27,7 +27,7 @@ extensions.add("torqDescriptorDir", descriptorDir)
 
 val buildTorqNative = tasks.register<Exec>("buildTorqNative") {
     group = "cartridge runtime"
-    description = "Copies the Torq-fork IREE runtime out of $runtimeImage and compiles the hes_iree shim and the embedded descriptor for linux-aarch64."
+    description = "Copies the Torq-fork IREE runtime out of $runtimeImage and compiles the IREE session shim and the embedded descriptor for linux-aarch64."
     inputs.dir(nativeSource)
     inputs.dir(descriptorDir)
     inputs.property("image", runtimeImage)
@@ -48,9 +48,9 @@ val buildTorqNative = tasks.register<Exec>("buildTorqNative") {
 kotlin {
     linuxArm64 {
         compilations.getByName("main").cinterops {
-            create("hes_iree") {
-                definitionFile.set(project.file("src/nativeInterop/cinterop/hes_iree.def"))
-                includeDirs(nativeSource.dir("hes"))
+            create("skainet_iree") {
+                definitionFile.set(project.file("src/nativeInterop/cinterop/skainet_iree.def"))
+                includeDirs(nativeSource.dir("iree-session"))
             }
             create("cartridge_abi") {
                 definitionFile.set(project.file("src/nativeInterop/cinterop/cartridge_abi.def"))
@@ -65,7 +65,7 @@ kotlin {
                 // Keep only what the library uses.
                 "-Wl,--as-needed",
                 lib.resolve("lib/liblfm2_torq_descriptor.a").absolutePath,
-                lib.resolve("lib/libhes_iree.a").absolutePath,
+                lib.resolve("lib/libskainet_iree.a").absolutePath,
                 lib.resolve("dist/lib/libiree_torq_runtime.a").absolutePath,
                 "-Wl,-Bstatic", "-lstdc++", "-lstdc++fs", "-Wl,-Bdynamic", "-lm", "-ldl", "-lpthread",
             )

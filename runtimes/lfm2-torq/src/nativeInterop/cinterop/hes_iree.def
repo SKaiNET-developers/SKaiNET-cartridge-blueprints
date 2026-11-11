@@ -1,5 +1,0 @@
-# The vendored hes_iree shim (native/hes, MIT): generic IREE sessions over the Torq-fork runtime. The header is
-# self-contained; the archives (libhes_iree.a, libiree_torq_runtime.a) are linked into the shared library only, by
-# build.gradle.kts, from build-native.sh's output.
-headers = hes_iree.h
-package = sk.ainet.cartridge.runtime.lfm2.torq.native

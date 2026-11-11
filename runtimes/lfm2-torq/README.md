@@ -1,6 +1,6 @@
 # lfm2-torq: the runtime of `generator-lfm25-350m-torq`
 
-`liblfm2_torq_cartridge.so` is the artifact with role `runtime` in a `generator-lfm25-350m-torq` pack. It is a Kotlin/Native shared library for linux-aarch64 that exports the Cartridge Runtime ABI 0.1 (`native/include/cartridge_abi.h`). It runs the blueprint's own greedy decoder (`GreedyDecoder`, the blueprint's Kotlin API) over the decode step on the Synaptics Torq NPU, inside the host's process. The Torq-fork IREE runtime and the `hes_iree` shim are linked in statically, so the board needs no separate runtime library or Java.
+`liblfm2_torq_cartridge.so` is the artifact with role `runtime` in a `generator-lfm25-350m-torq` pack. It is a Kotlin/Native shared library for linux-aarch64 that exports the Cartridge Runtime ABI 0.1 (`native/include/cartridge_abi.h`). It runs the blueprint's own greedy decoder (`GreedyDecoder`, the blueprint's Kotlin API) over the decode step on the Synaptics Torq NPU, inside the host's process. The Torq-fork IREE runtime and a small IREE session shim (`native/iree-session`, `skainet_iree_*`) are linked in statically, so the board needs no separate runtime library or Java.
 
 ## ABI behaviour
 
@@ -21,7 +21,7 @@ The blueprint builds the library as part of `materializeCartridge`. Neither `bui
 
 1. **`buildTorqNative`** runs `native/build-native.sh` in `skainet/iree-runtime-torq:2.3.0`. It produces:
    * the source-built Torq-fork IREE runtime archive with its headers and license set;
-   * the vendored shim (`native/hes/`, MIT, pinned in `native/upstream.json`), compiled with the image's Kotlin/Native clang and sysroot;
+   * the IREE session shim (`native/iree-session/`, MIT, derived from SKaiNET-embedded as recorded in `native/upstream.json`), compiled with the image's Kotlin/Native clang and sysroot;
    * the descriptor bytes (`lfm2_torq_descriptor.h`).
 2. **`linkCartridgeReleaseSharedLinuxArm64`** links those three archives with the Kotlin code.
 

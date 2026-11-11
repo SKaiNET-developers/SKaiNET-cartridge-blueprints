@@ -8,17 +8,17 @@
       "LICENSE.cartridge-abi": "ab2016f90368d7fe113cac0ec39dc0680fa1b316e45046aa04046aa1d5dc7ab4"
     }
   },
-  "hes_iree": {
-    "repository": "https://github.com/SKaiNET-developers/SKaiNET-embedded",
-    "revision": "07670af4eb016bf3f64de9a37b61a5325d74687e",
-    "path": "sl2610-home-even-smarter/native/iree-torq-runtime",
-    "license": "MIT",
+  "iree_session": {
+    "derived_from": {
+      "repository": "https://github.com/SKaiNET-developers/SKaiNET-embedded",
+      "revision": "07670af4eb016bf3f64de9a37b61a5325d74687e",
+      "path": "sl2610-home-even-smarter/native/iree-torq-runtime/hes_iree.{c,h}",
+      "license": "MIT"
+    },
+    "changes": "generic-session part only (runtime, devices, sessions, views, calls); renamed to the skainet_iree prefix; internal header inlined, helpers static; the KV-cache decoder and the streaming-ASR session removed",
     "files": {
-      "hes/hes_iree.c": "14fb785a1ff865f62d11b0d62718a53b1eb78833b74f1946b0b272629905c166",
-      "hes/hes_iree.h": "076e063145a6aafd507615a874370e9ca01ff0133fe9f2a1dc0273d2a17eb053",
-      "hes/hes_iree_internal.h": "6f3e3ddbdd98e8e223491ccc3f2ea9a551d49b66a6b7c4ba65ba11945d5ba867",
-      "hes/hes_moonshine.c": "a9c1b86e7b9bafeecb942633ded8bdf481b78b1ea30324ad2065e7dd83cd06f3",
-      "hes/LICENSE": "898d07fb57876cff6a3d3e73b0d5ab8f0886fdf7a5813c5bcbbb357482a45252"
+      "iree-session/skainet_iree.c": "af8cf95d51b1f2a12fd4699457b57f2d3e728074781deaddf98bab4edc535a99",
+      "iree-session/skainet_iree.h": "70dd239c2c88935401b4cd95f63377942ee749de63526b9d7840d4d479e6c4b5"
     }
   }
 }
