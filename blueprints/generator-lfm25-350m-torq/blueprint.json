@@ -92,6 +92,38 @@
       "license": "LicenseRef-LFM-Open-License-1.0",
       "license_url": "https://huggingface.co/LiquidAI/LFM2.5-350M/blob/9e6c6ccf47cd318696e137d381a7ded8fe4df09f/LICENSE",
       "redistribution": "restricted"
+    },
+    {
+      "name": "torq-runtime-source",
+      "role": "runtime",
+      "uri": "https://raw.githubusercontent.com/synaptics-torq/torq-compiler/1e4bbce9e65667eb523bface27a00ced8549d671",
+      "revision": "1e4bbce9e65667eb523bface27a00ced8549d671",
+      "files": [
+        {
+          "path": "LICENSE",
+          "digest": "sha256:9e45e856bedccee9f67254082ca11851d954de2fed7448c4bed19ad9aab99a91",
+          "size": 12262
+        }
+      ],
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "license_url": "https://github.com/synaptics-torq/torq-compiler/blob/v2.3.0/LICENSE",
+      "redistribution": "allowed"
+    },
+    {
+      "name": "iree-runtime-source",
+      "role": "runtime",
+      "uri": "https://raw.githubusercontent.com/synaptics-torq/iree/585aeccf0b7873983b38e5db8b28825c88699e65",
+      "revision": "585aeccf0b7873983b38e5db8b28825c88699e65",
+      "files": [
+        {
+          "path": "LICENSE",
+          "digest": "sha256:579fa63489ca4714793e90fa778b320f84527d7ebee37f1798db487e80c13cc0",
+          "size": 12719
+        }
+      ],
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "license_url": "https://github.com/synaptics-torq/iree/blob/585aeccf0b7873983b38e5db8b28825c88699e65/LICENSE",
+      "redistribution": "allowed"
     }
   ],
   "toolchain": {
@@ -108,6 +140,16 @@
       "version": "2.3.0",
       "image": "skainet/iree-compiler-torq:2.3.0",
       "description": "Synaptics Torq-fork iree-compile (SKaiNET-embedded-vendors synaptics-torq/docker): compile-torq with --input stablehlo-torq, which lowers the folded block-quant matmuls to Torq's mixed-quant kernel"
+    },
+    "iree-runtime-torq": {
+      "version": "2.3.0",
+      "image": "skainet/iree-runtime-torq:2.3.0",
+      "description": "The Torq-fork IREE runtime (Torq v2.3.0 and the IREE commit it pins) built from source for linux-aarch64 with the Kotlin/Native clang and sysroot (SKaiNET-embedded-vendors synaptics-torq/docker-runtime, built locally with its build.sh). runtimes/lfm2-torq/native/build-native.sh runs in it: the runtime archive and license set, the IREE session shim, the embedded descriptor."
+    },
+    "kotlin-native": {
+      "version": "2.4.21",
+      "coordinates": "org.jetbrains.kotlin.multiplatform",
+      "description": "Links runtimes/lfm2-torq (Cartridge Runtime ABI 0.1 over this module's GreedyDecoder) with those archives into liblfm2_torq_cartridge.so (linuxArm64 sharedLib)."
     }
   },
   "targets": [
@@ -202,6 +244,32 @@
       "description": "compile-torq --input stablehlo-torq --target <params.torq_hw>: one torq dispatch with the weights inline."
     },
     {
+      "id": "build-torq-runtime",
+      "kind": "build-runtime",
+      "tool": "iree-runtime-torq",
+      "uses": [
+        "torq-runtime-source",
+        "iree-runtime-source"
+      ],
+      "produces": [
+        "torq-native-archives",
+        "torq-runtime-licenses"
+      ],
+      "description": "In skainet/iree-runtime-torq: copy the source-built Torq-fork IREE runtime archive, headers and license set; compile the IREE session shim (runtimes/lfm2-torq/native/iree-session, provenance in upstream.json) and the resolved descriptor's bytes for ctg_descriptor_json."
+    },
+    {
+      "id": "build-native",
+      "kind": "build-runtime",
+      "tool": "kotlin-native",
+      "uses": [
+        "torq-native-archives"
+      ],
+      "produces": [
+        "native-runtime"
+      ],
+      "description": "Kotlin/Native linuxArm64 shared library exporting the Cartridge Runtime ABI 0.1 (streaming: push prompt token ids, flush, pull one generated token per PARTIAL, then FINAL with all of them); the decode step runs in-process on the torq device, the runtime and shim linked statically."
+    },
+    {
       "id": "pack",
       "kind": "pack",
       "tool": "blueprint-plugin",
@@ -210,7 +278,9 @@
         "io-table",
         "embedding-rows",
         "export-manifest",
-        "weights-files"
+        "weights-files",
+        "native-runtime",
+        "torq-runtime-licenses"
       ],
       "produces": [
         "pack-dir"
@@ -231,6 +301,15 @@
     }
   ],
   "outputs": [
+    {
+      "from": "native-runtime",
+      "role": "runtime",
+      "path": "artifacts/runtime/liblfm2_torq_cartridge.so",
+      "derived_from": [
+        "torq-runtime-source",
+        "iree-runtime-source"
+      ]
+    },
     {
       "from": "decode-step-vmfb",
       "role": "model",
@@ -307,6 +386,15 @@
       "path": "artifacts/license/LICENSE",
       "derived_from": [
         "weights"
+      ]
+    },
+    {
+      "from": "torq-runtime-licenses",
+      "role": "other",
+      "path": "artifacts/runtime/licenses/",
+      "derived_from": [
+        "torq-runtime-source",
+        "iree-runtime-source"
       ]
     }
   ],

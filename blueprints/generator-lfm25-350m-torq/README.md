@@ -7,7 +7,9 @@ as a Q4_0 copy of the tied embedding, kept packed as block-quant matmuls; Torq 2
 kernel. The embedding lookup, RoPE, the masks, sampling and stopping run on the host.
 
 This module holds no model: the Kotlin API is the host side of the step contract, and the recipe builds the pack
-from the publisher's checkpoint on your machine. The weights are under the LFM Open License v1.0, which you accept
+from the publisher's checkpoint on your machine, together with its runtime: `artifacts/runtime/liblfm2_torq_cartridge.so`,
+the Cartridge Runtime ABI over this API with the step on the NPU in-process
+([`runtimes/lfm2-torq`](../../runtimes/lfm2-torq/README.md)), built from source. The weights are under the LFM Open License v1.0, which you accept
 in your materialization profile (`license_acceptance`); the recipe never accepts it for you.
 
 ## Kotlin API (`commonMain`: JVM, Android, linuxX64, linuxArm64)
@@ -39,11 +41,17 @@ val result = decoder.generate(promptIds, maxNewTokens = 32, stopTokens = setOf(7
 | `export` (`exportDecodeStep`) | `Lfm2DecodeStepExportCli` from SKaiNET-transformers: projections loaded as Q8_0, a Q4_0 head, the fixed-capacity step traced with every packed matmul folded (93; one left unfolded fails the step); writes `decode_step.mlir`, `io.txt`, `embed.bf16.bin`, `export.json` |
 | `torq-bf16-retype` (`torqBf16Retype`) | every f32 to bf16, arguments and results included: Torq's f32 host fallback returns NaN |
 | `compile` (`compileDecodeStep`) | `compile-torq --input stablehlo-torq --target SL2610` in `skainet/iree-compiler-torq:2.3.0` |
-| `pack`, `sign` | the pack_dir with the module, port table, export manifest, embedding rows, tokenizer files and the model license |
+| `build-torq-runtime` (`:runtimes:lfm2-torq:buildTorqNative`) | in `skainet/iree-runtime-torq:2.3.0`: the Torq-fork IREE runtime (built from source in the image) with its license set, the IREE session shim (`skainet_iree`) and the resolved descriptor's bytes (`resolveRuntimeDescriptor`) |
+| `build-native` (`:runtimes:lfm2-torq:linkCartridgeReleaseSharedLinuxArm64`) | Kotlin/Native: `liblfm2_torq_cartridge.so`, the Cartridge Runtime ABI 0.1 for linux-aarch64 |
+| `pack`, `sign` | the pack_dir with the runtime and its licenses, the module, port table, export manifest, embedding rows, tokenizer files and the model license |
 
 ```sh
 ./gradlew :blueprints:generator-lfm25-350m-torq:materializeCartridge -Pprofile=/private/path/torq-sl26xx.json
 ```
+
+You need Docker with two local images, built from source and never pulled from a registry. Both come from
+SKaiNET-embedded-vendors: `skainet/iree-compiler-torq:2.3.0` (`synaptics-torq/docker/build.sh`) and
+`skainet/iree-runtime-torq:2.3.0` (`synaptics-torq/docker-runtime/build.sh`).
 
 Target parameters (`blueprint.json` `targets[torq-sl26xx].params`): `capacity` (64), `weights` (`q8_0`), `head`
 (`q4_0`), `conv` (`multiply-sum`: the short convolution as elementwise multiply + sum), `attention` (`batched`).
