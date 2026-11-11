@@ -1,3 +1,8 @@
+import kotlinx.serialization.json.JsonObject
+import sk.ainet.cartridge.blueprint.core.CanonicalJson
+import sk.ainet.cartridge.blueprint.core.DescriptorResolver
+import sk.ainet.cartridge.blueprint.core.Documents
+import sk.ainet.cartridge.blueprint.core.EffectiveLicense
 import sk.ainet.cartridge.blueprint.gradle.IreeCompileTask
 import sk.ainet.cartridge.blueprint.gradle.TorqBf16RetypeTask
 import java.security.MessageDigest
@@ -5,10 +10,10 @@ import java.security.MessageDigest
 // Blueprint: text generation with LFM2.5-350M, one decode step per call on the Synaptics Torq NPU.
 //
 // (1) The cartridge's Kotlin API, with NO model in it: the decode step's port table, the host-side controls (RoPE,
-// attention and write masks), the bf16 embedding rows and a greedy decoder over an abstract DecodeStepRunner. The
-// runner that calls the Torq runtime belongs to whoever materializes the cartridge.
+// attention and write masks), the bf16 embedding rows and a greedy decoder over an abstract DecodeStepRunner.
 // (2) The recipe: the tasks below are the `steps` of blueprint.json, registered as named products for
-// `materializeCartridge`.
+// `materializeCartridge`. The cartridge's runtime (role `runtime`) is runtimes/lfm2-torq: that decoder behind the
+// Cartridge Runtime ABI, the decode step on the Torq NPU in-process, built from source through Docker.
 //
 //   ./gradlew :blueprints:generator-lfm25-350m-torq:materializeCartridge -Pprofile=profiles/<yours>.json
 plugins {
@@ -137,3 +142,50 @@ for (file in listOf("tokenizer.json", "tokenizer_config.json", "chat_template.ji
     blueprint.product("tokenizer-" + file.substringBefore('.').replace('_', '-'), blueprint.sourceFile("weights", file))
 }
 blueprint.product("model-license", blueprint.sourceFile("weights", "LICENSE"))
+
+// ------------------------------------------------------------------------------------------------------------
+// build-torq-runtime + build-native: liblfm2_torq_cartridge.so (runtimes/lfm2-torq), embedding the descriptor
+// materializeCartridge writes. Resolved here exactly as the Materializer resolves it.
+// ------------------------------------------------------------------------------------------------------------
+
+abstract class ResolveRuntimeDescriptor : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val recipe: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val profile: RegularFileProperty
+    @get:OutputDirectory abstract val destination: DirectoryProperty
+
+    @TaskAction fun resolve() {
+        val bp = Documents.blueprint(recipe.get().asFile)
+        val pf = Documents.profile(profile.get().asFile)
+        Documents.requireMatch(bp, pf)
+        val b = bp.value
+        // Materializer.materialize: the effective license over what the selected outputs derive from.
+        val outputs = b.outputs.filter { it.flavor == null || it.flavor in pf.value.flavors }
+        val upstream = outputs.flatMap { o -> o.derivedFrom.mapNotNull { b.source(it)?.license } }
+        val descriptor = DescriptorResolver.resolve(b, pf.value, EffectiveLicense.compute(b.license, upstream))
+        val out = destination.get().asFile
+        out.deleteRecursively(); out.mkdirs()
+        out.resolve("descriptor.json").writeText(Documents.json.encodeToString(JsonObject.serializer(), descriptor) + "\n")
+        out.resolve("descriptor.canonical.json").writeText(CanonicalJson.encode(descriptor))
+    }
+}
+
+evaluationDependsOn(":runtimes:lfm2-torq")
+val cartridgeRuntime = project(":runtimes:lfm2-torq")
+
+val resolveRuntimeDescriptor = tasks.register<ResolveRuntimeDescriptor>("resolveRuntimeDescriptor") {
+    group = "cartridge blueprint steps"
+    description = "The descriptor materializeCartridge will write, for the runtime to embed (ctg_descriptor_json)."
+    recipe.set(blueprint.blueprintFile)
+    profile.set(blueprint.profileFile)
+    destination.set(work.map { it.dir("runtime/descriptor") })
+}
+@Suppress("UNCHECKED_CAST")
+(cartridgeRuntime.extensions.getByName("torqDescriptorDir") as DirectoryProperty).set(resolveRuntimeDescriptor.flatMap { it.destination })
+
+@Suppress("UNCHECKED_CAST")
+val runtimeLibrary = cartridgeRuntime.extensions.getByName("cartridgeLibrary") as Provider<File>
+val linkRuntime = cartridgeRuntime.tasks.named("linkCartridgeReleaseSharedLinuxArm64")
+val torqNative = cartridgeRuntime.tasks.named("buildTorqNative")
+// map over the task providers: the products carry the link and the Docker step as their producers.
+blueprint.product("native-runtime", linkRuntime.map { layout.projectDirectory.file(runtimeLibrary.get().absolutePath) })
+blueprint.product("torq-runtime-licenses", torqNative.map { layout.projectDirectory.dir(it.outputs.files.singleFile.resolve("dist/licenses").absolutePath) })

@@ -38,6 +38,9 @@ include(":profiles:yolo-v1")
 include(":blueprints:detection-yolov8-iree")
 // Its Kotlin API needs no LFM2 module; only the export step resolves the exporter, when it runs.
 include(":blueprints:generator-lfm25-350m-torq")
+// Its runtime: the Cartridge Runtime ABI over that blueprint's decoder, a Kotlin/Native shared library for the board.
+// `build` compiles it; the Docker build and the link run only for materializeCartridge (or when asked for by name).
+include(":runtimes:lfm2-torq")
 // Hands-on demo app over that blueprint's packs. It builds without the packs; the APK bundles
 // whatever `materializeCartridge` has produced locally (AGPL weights never enter the repo).
 // The Compose demo graduated to SKaiNET-examples/VisionDemo.

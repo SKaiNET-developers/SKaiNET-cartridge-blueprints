@@ -1,0 +1,8 @@
+# The Cartridge Runtime ABI 0.1 types (native/include/cartridge_abi.h, pinned in native/upstream.json) and the embedded
+# descriptor. The ctg_* functions are what this library exports (CartridgeAbi.kt), so they are not imported.
+headers = cartridge_abi.h lfm2_torq_descriptor.h
+headerFilter = cartridge_abi.h lfm2_torq_descriptor.h
+package = sk.ainet.cartridge.runtime.lfm2.torq.abi
+excludedFunctions = ctg_abi_version ctg_descriptor_json ctg_preflight ctg_open ctg_close ctg_session_begin \
+  ctg_session_end ctg_result_get_kind ctg_result_get_payload ctg_result_release ctg_infer ctg_push ctg_pull \
+  ctg_flush ctg_cancel ctg_last_error
