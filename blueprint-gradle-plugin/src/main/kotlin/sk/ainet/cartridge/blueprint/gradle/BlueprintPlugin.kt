@@ -103,7 +103,29 @@ abstract class BlueprintExtension @javax.inject.Inject constructor(private val p
         fetchTask.flatMap { it.linksDir.file("$source/$path") }
 
     /**
-     * Registers what a step of kind convert / quantize / export / compile / build-runtime produced, under the
+     * A declared input as the profile supplies it (`inputs.<name>.path`, relative to the profile), for wiring into a
+     * model-specific step: a `train` step's dataset, a label set, a calibration set. Checked exactly as
+     * `materializeCartridge` checks it: declared, digest as pinned, conforming to its declared schema. Has no value
+     * when the input is optional and the profile omits it; [name] must be an input the blueprint declares.
+     */
+    fun inputFile(name: String): Provider<org.gradle.api.file.RegularFile> =
+        project.layout.file(
+            blueprintFile.zip(profileFile) { b, p -> b.asFile to p.asFile }.map { (b, p) ->
+                materializing {
+                    val blueprint = Documents.blueprint(b)
+                    if (blueprint.value.inputs.none { it.name == name }) {
+                        throw sk.ainet.cartridge.blueprint.model.MaterializationException(
+                            "blueprint.inputFile(\"$name\"): ${b.name} declares no such input " +
+                                "(declared: ${blueprint.value.inputs.map { it.name }})",
+                        )
+                    }
+                    sk.ainet.cartridge.blueprint.core.InputResolver.resolve(blueprint, Documents.profile(p))[name]?.file
+                }
+            },
+        )
+
+    /**
+     * Registers what a step of kind convert / quantize / export / compile / build-runtime / train / calibrate produced, under the
      * name the blueprint's `steps[].produces` and `outputs[].from` use. Task dependencies travel with [location].
      */
     fun product(name: String, location: Provider<out FileSystemLocation>) {

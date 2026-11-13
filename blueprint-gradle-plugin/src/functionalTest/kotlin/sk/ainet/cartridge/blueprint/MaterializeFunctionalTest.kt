@@ -42,6 +42,17 @@ class MaterializeFunctionalTest {
                 doLast { out.get().asFile.apply { parentFile.mkdirs() }.writeBytes(byteArrayOf(9)) }
             }
 
+            // A step that reads a declared input (a `train` step's dataset, ADR-018): the file comes from the profile.
+            tasks.register("readCatalog") {
+                val catalog = blueprint.inputFile("tool-catalog")
+                inputs.file(catalog)
+                doLast { println("catalog bytes: " + catalog.get().asFile.length()) }
+            }
+            tasks.register("readUndeclared") {
+                val missing = blueprint.inputFile("no-such-input")
+                doLast { println(missing.orNull) }
+            }
+
             blueprint {
                 product("graphs", compileGraphs.map { layout.buildDirectory.dir("graphs").get() })
                 product("runtime-so", buildRuntime.map { layout.buildDirectory.file("runtime/libtoy-ctg.so").get() })
@@ -90,6 +101,17 @@ class MaterializeFunctionalTest {
         val fOn = Fixture(withGermanFlavor = true, selectFlavors = listOf("de"))
         val on = runner(project(fOn), "materializeCartridge", "-Pprofile=${fOn.profileFile.path}").build()
         assertEquals(TaskOutcome.SUCCESS, on.task(":bakeDe")!!.outcome)
+    }
+
+    @Test
+    fun `a step task reads a declared input through the profile, and an undeclared name is an error`() {
+        val f = Fixture()
+        val dir = project(f)
+        val ok = runner(dir, "readCatalog", "-Pprofile=${f.profileFile.path}").build()
+        assertContains(ok.output, "catalog bytes: ${f.catalog.length()}")
+
+        val bad = runner(dir, "readUndeclared", "-Pprofile=${f.profileFile.path}").buildAndFail()
+        assertContains(bad.output, "declares no such input")
     }
 
     @Test

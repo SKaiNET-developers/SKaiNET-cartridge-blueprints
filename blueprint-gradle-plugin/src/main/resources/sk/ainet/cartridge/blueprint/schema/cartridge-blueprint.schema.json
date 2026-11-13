@@ -453,11 +453,13 @@
             "export",
             "compile",
             "build-runtime",
+            "train",
+            "calibrate",
             "measure",
             "pack",
             "sign"
           ],
-          "description": "'fetch' downloads and digest-verifies sources; 'convert' changes format or layout without changing numerics beyond dtype casts; 'quantize' changes numeric precision; 'export' turns a model into a compiler input (e.g. StableHLO); 'compile' turns that into a target artifact; 'build-runtime' builds the native runtime library; 'measure' produces performance/quality on the target; 'pack' assembles the pack_dir; 'sign' signs the manifest."
+          "description": "'fetch' downloads and digest-verifies sources; 'convert' changes format or layout without changing numerics beyond dtype casts; 'quantize' changes numeric precision; 'export' turns a model into a compiler input (e.g. StableHLO); 'compile' turns that into a target artifact; 'build-runtime' builds the native runtime library; 'train' fits model parameters to declared data and 'calibrate' fits decision constants (a temperature, thresholds) to declared data — both list that data in `uses`, carry `params.seed`, and their products are not byte-reproducible (ADR-018); 'measure' produces performance/quality on the target; 'pack' assembles the pack_dir; 'sign' signs the manifest."
         },
         "description": {
           "type": "string"
