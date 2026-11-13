@@ -1,0 +1,75 @@
+{
+  "name": "Speech-MASSIVE de-DE",
+  "url": "https://huggingface.co/datasets/FBK-MT/Speech-MASSIVE",
+  "revision": "ff792febc16187a21e5bca38fb02a55daf91dc05",
+  "license": "CC-BY-NC-SA-4.0",
+  "terms": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+  "files": [
+    {
+      "path": "de-DE/train-00000-of-00009.parquet",
+      "digest": "sha256:311ca281e20055c30a5ea5a61c9ab9c646f0284af3f61a20ce7f212b9a2db800",
+      "size": 419621950,
+      "split": "train"
+    },
+    {
+      "path": "de-DE/train-00001-of-00009.parquet",
+      "digest": "sha256:973aadf78d4ea1dd3aa76cba5e8a44b3a24cde18a32c1090b2c4fc50c3942056",
+      "size": 425280115,
+      "split": "train"
+    },
+    {
+      "path": "de-DE/train-00002-of-00009.parquet",
+      "digest": "sha256:f9a2d52b5a200c0fab077c1ded8b697e27135dd82ea35f14887ece49f4e17abf",
+      "size": 429515934,
+      "split": "train"
+    },
+    {
+      "path": "de-DE/train-00003-of-00009.parquet",
+      "digest": "sha256:1050787a06cc89b09d5fa7d9a5a71134f6abb1b26b2c27df7c858ab3eb8fb73c",
+      "size": 424408440,
+      "split": "train"
+    },
+    {
+      "path": "de-DE/train-00004-of-00009.parquet",
+      "digest": "sha256:ccdc2d1879d76624a80999ca6f63e115b6de9e6e0ee78fed457e62a1b966c31a",
+      "size": 425829177,
+      "split": "train"
+    },
+    {
+      "path": "de-DE/train-00005-of-00009.parquet",
+      "digest": "sha256:021dc654c40202b6cd087817d7330e729f0fc8318900b9f4e09ae9f6f794fb82",
+      "size": 428579094,
+      "split": "train"
+    },
+    {
+      "path": "de-DE/train-00006-of-00009.parquet",
+      "digest": "sha256:f8410b2329d2860b030b00ddeb688804005fe9151483c382369c9aae2343b698",
+      "size": 422249925,
+      "split": "train"
+    },
+    {
+      "path": "de-DE/train-00007-of-00009.parquet",
+      "digest": "sha256:0505e41f18daf60ef76f6221a316a48c152c12da8df274bccb56d0179e2dbfb1",
+      "size": 425918707,
+      "split": "train"
+    },
+    {
+      "path": "de-DE/train-00008-of-00009.parquet",
+      "digest": "sha256:616455a5b8d967aaf2cd0f14478f86d1ddad60331b05f66940f09a13a901e03d",
+      "size": 423803390,
+      "split": "train"
+    },
+    {
+      "path": "de-DE/validation-00000-of-00002.parquet",
+      "digest": "sha256:cff0438a9dfc67612786ff05f1b58d9e8d8b5f0115bcf92a4607297b1440b9d5",
+      "size": 342579710,
+      "split": "test"
+    },
+    {
+      "path": "de-DE/validation-00001-of-00002.parquet",
+      "digest": "sha256:5e8fbf9f6706ee8aa551f63152a52c1d5ae07dcffe38451a63ff8225a78a9541",
+      "size": 347161236,
+      "split": "test"
+    }
+  ]
+}

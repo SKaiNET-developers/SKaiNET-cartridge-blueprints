@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Label set",
+  "description": "The classes a classification head decides between. The order is the order of the output logits.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "labels"
+  ],
+  "properties": {
+    "labels": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Class names, in output order. A recording whose label is not listed counts as out of set."
+    },
+    "reject_label": {
+      "type": "string",
+      "description": "Optional. One of `labels`: the class trained on out-of-set recordings. Never an accepted result."
+    },
+    "held_out": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional. Dataset labels kept away from training and calibration altogether, so the test split measures how the head treats classes it has never heard."
+    }
+  }
+}

@@ -36,6 +36,7 @@ include(":profiles:embedding-v1")
 include(":profiles:llm-v1")
 include(":profiles:yolo-v1")
 include(":blueprints:detection-yolov8-iree")
+include(":blueprints:classification-moonshine-v2-head-iree")
 // Its Kotlin API needs no LFM2 module; only the export step resolves the exporter, when it runs.
 include(":blueprints:generator-lfm25-350m-torq")
 // Its runtime: the Cartridge Runtime ABI over that blueprint's decoder, a Kotlin/Native shared library for the board.
