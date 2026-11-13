@@ -1,7 +1,5 @@
 package sk.ainet.cartridge.blueprint.core
 
-import io.github.optimumcode.json.schema.ErrorCollector
-import io.github.optimumcode.json.schema.JsonSchema
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -42,7 +40,7 @@ class Materializer(
     fun materialize(packDir: File, privateKeyPem: String?): Result {
         Documents.requireMatch(blueprint, profile)
         LicenseGate.check(bp, pf)
-        val inputs = resolveInputs()
+        val inputs = InputResolver.resolve(blueprint, profile)
 
         val outputs = bp.outputs.filter { it.flavor == null || it.flavor in pf.flavors }
         val upstreamOf = outputs.associateWith { upstream(it, inputs) }
@@ -92,50 +90,9 @@ class Materializer(
 
     // --- inputs ------------------------------------------------------------------------------------
 
-    private data class Input(val file: File, val license: String, val digest: String)
-
-    private fun resolveInputs(): Map<String, Input> {
-        val undeclared = pf.inputs.keys - bp.inputs.map { it.name }.toSet()
-        if (undeclared.isNotEmpty()) {
-            throw MaterializationException("Profile supplies inputs the blueprint does not declare: $undeclared")
-        }
-        val resolved = LinkedHashMap<String, Input>()
-        for (decl in bp.inputs) {
-            val supplied = pf.inputs[decl.name]
-            if (supplied == null) {
-                if (decl.required) {
-                    throw MaterializationException(
-                        "Required input '${decl.name}' is missing from the profile" +
-                            (decl.description?.let { " — $it" } ?: "") + ". Supply it under `inputs.${decl.name}`.",
-                    )
-                }
-                continue
-            }
-            val file = profile.file.parentFile.resolve(supplied.path).canonicalFile
-            if (!file.isFile) throw MaterializationException("Input '${decl.name}': no such file ${file.path}")
-            val digest = Digests.sha256(file)
-            if (supplied.digest != null && supplied.digest != digest) {
-                throw MaterializationException("Input '${decl.name}': profile pins ${supplied.digest}, file is $digest")
-            }
-            decl.schema?.let { validateInput(decl.name, file, blueprint.file.parentFile.resolve(it)) }
-            resolved[decl.name] = Input(file, supplied.license, digest)
-        }
-        return resolved
-    }
-
-    private fun validateInput(name: String, file: File, schemaFile: File) {
-        if (!schemaFile.isFile) throw MaterializationException("Input '$name': declared schema not found: ${schemaFile.path}")
-        val errors = mutableListOf<String>()
-        JsonSchema.fromDefinition(schemaFile.readText())
-            .validate(Documents.json.parseToJsonElement(file.readText()), ErrorCollector { e -> errors += "${e.objectPath}: ${e.message}" })
-        if (errors.isNotEmpty()) {
-            throw MaterializationException("Input '$name' (${file.name}) does not conform to ${schemaFile.name}:\n" + errors.joinToString("\n") { "  - $it" })
-        }
-    }
-
     // --- outputs -----------------------------------------------------------------------------------
 
-    private fun upstream(output: Output, inputs: Map<String, Input>): List<Upstream> = output.derivedFrom.map { name ->
+    private fun upstream(output: Output, inputs: Map<String, ResolvedInput>): List<Upstream> = output.derivedFrom.map { name ->
         bp.source(name)?.let { Upstream("${it.uri}@${it.revision}", it.license) }
             ?: inputs[name]?.let { Upstream("input:$name", it.license) }
             ?: throw MaterializationException(
@@ -145,7 +102,7 @@ class Materializer(
     }
 
     /** What `from` names: a step product, else a supplied input, else (for a `fetch` product) the fetched source. */
-    private fun locate(from: String, inputs: Map<String, Input>): List<File> {
+    private fun locate(from: String, inputs: Map<String, ResolvedInput>): List<File> {
         products[from]?.let { return listOf(it) }
         inputs[from]?.let { return listOf(it.file) }
         for (step in bp.steps.filter { it.kind == "fetch" && it.uses.size == it.produces.size }) {
@@ -159,7 +116,7 @@ class Materializer(
         )
     }
 
-    private fun place(output: Output, inputs: Map<String, Input>): List<Pair<String, File>> {
+    private fun place(output: Output, inputs: Map<String, ResolvedInput>): List<Pair<String, File>> {
         val files = locate(output.from, inputs).flatMap { f ->
             when {
                 f.isDirectory -> f.walkTopDown().filter { it.isFile }.sortedBy { it.path }.map { it.relativeTo(f).invariantSeparatorsPath to it }.toList()
@@ -197,7 +154,7 @@ class Materializer(
 
     // --- manifest ----------------------------------------------------------------------------------
 
-    private fun manifest(descriptor: JsonObject, effective: String, artifacts: List<JsonObject>, inputs: Map<String, Input>) = buildJsonObject {
+    private fun manifest(descriptor: JsonObject, effective: String, artifacts: List<JsonObject>, inputs: Map<String, ResolvedInput>) = buildJsonObject {
         put("schema_version", JsonPrimitive("2"))
         put("kind", JsonPrimitive("cartridge"))
         put("id", descriptor.getValue("id"))

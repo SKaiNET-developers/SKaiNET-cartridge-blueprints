@@ -11,6 +11,7 @@ import sk.ainet.cartridge.blueprint.core.CanonicalJson
 import sk.ainet.cartridge.blueprint.core.Digests
 import sk.ainet.cartridge.blueprint.core.Documents
 import sk.ainet.cartridge.blueprint.core.EffectiveLicense
+import sk.ainet.cartridge.blueprint.core.InputResolver
 import sk.ainet.cartridge.blueprint.core.LicenseGate
 import sk.ainet.cartridge.blueprint.core.Materializer
 import sk.ainet.cartridge.blueprint.core.Selection
@@ -242,6 +243,34 @@ class MaterializerTest {
         val e = assertFailsWith<MaterializationException> { materialize(f) }
         assertContains(e.message!!, "tool-catalog")
         assertContains(e.message!!, "does not conform")
+    }
+
+    @Test
+    fun `a step task sees an input exactly as the materializer does`() {
+        val f = Fixture()
+        val resolved = InputResolver.resolve(Documents.blueprint(f.blueprintFile), Documents.profile(f.profileFile))
+        assertEquals(f.catalog.canonicalFile, resolved.getValue("tool-catalog").file)
+        assertEquals(Digests.sha256(f.catalog), resolved.getValue("tool-catalog").digest)
+
+        f.catalog.writeText("""{"functions":[]}""")
+        val e = assertFailsWith<MaterializationException> {
+            InputResolver.resolve(Documents.blueprint(f.blueprintFile), Documents.profile(f.profileFile))
+        }
+        assertContains(e.message!!, "does not conform")
+    }
+
+    @Test
+    fun `train and calibrate are step kinds a blueprint may declare`() {
+        val f = Fixture()
+        f.blueprintFile.writeText(
+            f.blueprintFile.readText().replace(
+                """"steps":[""",
+                """"steps":[{"id":"fit","kind":"train","tool":"compiler","uses":["weights","tool-catalog"],"produces":["fitted"],"params":{"seed":7}},""" +
+                    """{"id":"cal","kind":"calibrate","tool":"compiler","uses":["fitted","tool-catalog"],"produces":["calibration"],"params":{"seed":7}},""",
+            ),
+        )
+        val kinds = Documents.blueprint(f.blueprintFile).value.steps.map { it.kind }
+        assertTrue("train" in kinds && "calibrate" in kinds)
     }
 
     @Test
