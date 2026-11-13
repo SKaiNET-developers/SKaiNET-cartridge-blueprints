@@ -1,0 +1,29 @@
+{
+  "labels": [
+    "calendar_set",
+    "calendar_query",
+    "weather_query",
+    "datetime_query",
+    "news_query",
+    "play_music",
+    "play_radio",
+    "alarm_set",
+    "alarm_query",
+    "alarm_remove",
+    "audio_volume_up",
+    "audio_volume_down",
+    "audio_volume_mute",
+    "iot_hue_lighton",
+    "iot_hue_lightoff",
+    "iot_hue_lightup",
+    "iot_hue_lightdim",
+    "iot_hue_lightchange",
+    "other"
+  ],
+  "reject_label": "other",
+  "held_out": [
+    "qa_factoid",
+    "general_quirky",
+    "transport_query"
+  ]
+}

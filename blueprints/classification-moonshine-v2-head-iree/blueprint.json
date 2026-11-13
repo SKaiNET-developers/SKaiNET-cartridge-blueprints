@@ -1,0 +1,543 @@
+{
+  "spec_version": "0.4",
+  "kind": "blueprint",
+  "id": "classification-moonshine-v2-head-iree",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "A classification head on the rows of a frozen Moonshine v2 streaming encoder: trained on your label set and your recordings, calibrated to accept, defer or refuse, compiled with IREE for Vulkan or CPU. The head is one SKaiNET-DSL definition that is trained, run and exported; the weights it ships are the ones this recipe fits.",
+  "descriptor_template": {
+    "family": "moonshine-v2-head",
+    "execution_mode": "native",
+    "model": {
+      "name": "moonshine-v2-head",
+      "variant": "iree-fp32",
+      "upstream": {
+        "source": "https://huggingface.co/moonshine-ai",
+        "license": "MIT"
+      }
+    },
+    "modality": "audio",
+    "task": "classification",
+    "io": {
+      "mode": "batch",
+      "input": {
+        "dtype": "float32",
+        "shape": [
+          256,
+          321
+        ]
+      },
+      "output": {
+        "dtype": "float32",
+        "shape": [
+          null
+        ]
+      }
+    },
+    "attributes": {
+      "task_profile": "classification/v1",
+      "features": {
+        "rows": "pre-adapter",
+        "rows_per_second": 50,
+        "dim": 320,
+        "max_rows": 256,
+        "window": {
+          "chunk": 64,
+          "left": 16,
+          "lookahead": 4,
+          "hop": 44
+        },
+        "layout": "[max_rows, dim + 1]: one encoder row per line in columns 0..dim-1, column dim is 1.0 for a real row and 0.0 for padding; rows beyond max_rows are dropped"
+      },
+      "weights": "fp32",
+      "runtime_hint": {
+        "runtime": "iree",
+        "version": "3.11.0",
+        "function": "classify",
+        "contract": "single-shot module: one function, one input tensor [1, 256, 321], one output tensor [1, classes] (generic IREE module runner)"
+      }
+    }
+  },
+  "sources": [
+    {
+      "name": "encoder-de",
+      "role": "weights",
+      "uri": "hf://moonshine-ai/moonshine-streaming-tiny-de",
+      "revision": "928bfb925992902b7e187fda7921d72114142e1f",
+      "files": [
+        {
+          "path": "config.json",
+          "digest": "sha256:6c49ec398e57e1c3146c77772089287746fe3f6209ad2579c70bc8e8eb304424",
+          "size": 1495
+        },
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:c507ab76d07e1b904e620ff508f766f7f75fa78c8c0783b8165e258f5143ac45",
+          "size": 108079716
+        }
+      ],
+      "license": "MIT",
+      "license_url": "https://huggingface.co/moonshine-ai/moonshine-streaming-tiny-de/blob/928bfb925992902b7e187fda7921d72114142e1f/README.md",
+      "redistribution": "allowed"
+    },
+    {
+      "name": "encoder-en",
+      "role": "weights",
+      "uri": "hf://moonshine-ai/moonshine-streaming-tiny",
+      "revision": "f8e9dfd8c562c257c151a907b7b7f2fe8ff8511a",
+      "files": [
+        {
+          "path": "config.json",
+          "digest": "sha256:166861753adaf928ae99b3709bfb1da47cb76319be58f37c6f9b7a539ce371f0",
+          "size": 1421
+        },
+        {
+          "path": "model.safetensors",
+          "digest": "sha256:0ab3443dabd95a4afb35f0a26155428c03b7c3c450fa6923ffdac4510ba3d040",
+          "size": 176237308
+        }
+      ],
+      "license": "MIT",
+      "license_url": "https://huggingface.co/moonshine-ai/moonshine-streaming-tiny/blob/f8e9dfd8c562c257c151a907b7b7f2fe8ff8511a/README.md",
+      "redistribution": "allowed"
+    }
+  ],
+  "toolchain": {
+    "skainet": {
+      "version": "0.63.0",
+      "coordinates": "sk.ainet:skainet-bom",
+      "description": "SKaiNET NN DSL, training DSL and autograd, StableHLO export"
+    },
+    "skainet-transformers": {
+      "version": "0.64.2",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-inference-moonshine",
+      "description": "The Moonshine v2 frontend and encoder with the checkpoint loader, run eagerly to compute the rows the head is trained on"
+    },
+    "iree-tools": {
+      "version": "3.11.0",
+      "image": "skainet/iree-compiler:3.11.0",
+      "description": "IREE tools (StableHLO -> IREE)"
+    },
+    "iree-android-runtime": {
+      "version": "0.64.2",
+      "coordinates": "sk.ainet.transformers:skainet-transformers-runtime-iree-android",
+      "description": "libskainet_iree_module.so + IreeModuleRunner (generic single-shot module runner), built and published by SKaiNET-transformers"
+    },
+    "blueprint-plugin": {
+      "version": "0.1.0",
+      "coordinates": "sk.ainet.cartridge.blueprint"
+    }
+  },
+  "targets": [
+    {
+      "id": "vulkan-armv7",
+      "target": {
+        "hardware": "IREE-armeabi-v7a",
+        "abi": "armeabi-v7a",
+        "accelerator": "Vulkan GPU (valhall4)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 64,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "vulkan",
+        "iree_target": "valhall4",
+        "device": "vulkan"
+      }
+    },
+    {
+      "id": "cpu-armv7",
+      "target": {
+        "hardware": "IREE-armeabi-v7a",
+        "abi": "armeabi-v7a"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 64,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "arm32",
+        "device": "local-task"
+      }
+    },
+    {
+      "id": "vulkan-arm64",
+      "target": {
+        "hardware": "IREE-arm64-v8a",
+        "abi": "arm64-v8a",
+        "accelerator": "Vulkan GPU (valhall4)"
+      },
+      "requirements": {
+        "needs_accelerator": true,
+        "memory_mb": 64,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "vulkan",
+        "iree_target": "valhall4",
+        "device": "vulkan"
+      }
+    },
+    {
+      "id": "cpu-arm64",
+      "target": {
+        "hardware": "IREE-arm64-v8a",
+        "abi": "arm64-v8a"
+      },
+      "requirements": {
+        "needs_accelerator": false,
+        "memory_mb": 64,
+        "os": {
+          "name": "android",
+          "min_api": 29
+        }
+      },
+      "params": {
+        "backend": "cpu",
+        "iree_target": "arm64",
+        "device": "local-task"
+      }
+    }
+  ],
+  "flavors": [
+    {
+      "id": "de",
+      "description": "The head for the German encoder.",
+      "sources": [
+        "encoder-de"
+      ],
+      "descriptor_overrides": {
+        "model": {
+          "variant": "iree-fp32-de",
+          "checkpoint": "moonshine-ai/moonshine-streaming-tiny-de"
+        },
+        "attributes": {
+          "languages": [
+            "de"
+          ],
+          "features": {
+            "encoder": "moonshine-ai/moonshine-streaming-tiny-de",
+            "revision": "928bfb925992902b7e187fda7921d72114142e1f"
+          }
+        }
+      }
+    },
+    {
+      "id": "en",
+      "description": "The head for the English encoder.",
+      "sources": [
+        "encoder-en"
+      ],
+      "descriptor_overrides": {
+        "model": {
+          "variant": "iree-fp32-en",
+          "checkpoint": "moonshine-ai/moonshine-streaming-tiny"
+        },
+        "attributes": {
+          "languages": [
+            "en"
+          ],
+          "features": {
+            "encoder": "moonshine-ai/moonshine-streaming-tiny",
+            "revision": "f8e9dfd8c562c257c151a907b7b7f2fe8ff8511a"
+          }
+        }
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "name": "label-set",
+      "role": "other",
+      "required": true,
+      "schema": "schema/label-set.schema.json",
+      "description": "The classes the head decides between, in output order, with an optional reject class for everything else."
+    },
+    {
+      "name": "dataset",
+      "role": "other",
+      "required": true,
+      "schema": "schema/dataset-manifest.schema.json",
+      "description": "A manifest of labeled 16 kHz mono recordings, split into train, dev and test. Read at build time only; never placed in the pack. Its license enters the effective license of everything trained on it."
+    }
+  ],
+  "steps": [
+    {
+      "id": "fetch",
+      "kind": "fetch",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "encoder-de",
+        "encoder-en"
+      ],
+      "produces": [
+        "encoder-de-files",
+        "encoder-en-files"
+      ],
+      "description": "SKaiNET data-source: hf:// at the pinned revision, SHA-256 verified. Only the selected flavor's encoder is fetched."
+    },
+    {
+      "id": "features",
+      "kind": "export",
+      "tool": "skainet-transformers",
+      "uses": [
+        "encoder-de-files",
+        "encoder-en-files",
+        "dataset"
+      ],
+      "produces": [
+        "features"
+      ],
+      "params": {
+        "max_rows": 256
+      },
+      "description": "Kotlin (FeaturesCli, this blueprint): every recording through the frozen encoder, windowed as a streaming recognizer windows it, rows cached in safetensors shards. Resumable; the encoder is never trained."
+    },
+    {
+      "id": "train",
+      "kind": "train",
+      "tool": "skainet",
+      "uses": [
+        "features",
+        "dataset",
+        "label-set"
+      ],
+      "produces": [
+        "head-weights",
+        "label-set-json",
+        "train-report"
+      ],
+      "params": {
+        "seed": 20261113,
+        "hidden": 256,
+        "dropout": 0.1,
+        "learning_rate": 0.001,
+        "batch": 64,
+        "max_epochs": 40,
+        "patience": 6
+      },
+      "description": "Kotlin (TrainCli): the head (src/commonMain/.../model/ClassificationHead.kt) fitted with the SKaiNET training DSL on the train split, class-balanced sampling, early stopping on dev top-1."
+    },
+    {
+      "id": "calibrate",
+      "kind": "calibrate",
+      "tool": "skainet",
+      "uses": [
+        "head-weights",
+        "features",
+        "dataset",
+        "label-set"
+      ],
+      "produces": [
+        "calibration-json"
+      ],
+      "params": {
+        "seed": 20261113,
+        "score": "energy",
+        "target_risk": 0.01,
+        "reject_keep": 0.95
+      },
+      "description": "Kotlin (CalibrateCli): on the dev split, the temperature that minimizes the negative log-likelihood, then thresholds.accept as the loosest score at which at most target_risk of the accepted inputs are wrong, and thresholds.reject as the score that keeps reject_keep of the in-set inputs. Deterministic; the seed is recorded for ADR-018."
+    },
+    {
+      "id": "measure",
+      "kind": "measure",
+      "tool": "skainet",
+      "uses": [
+        "head-weights",
+        "calibration-json",
+        "features",
+        "dataset",
+        "label-set"
+      ],
+      "produces": [
+        "quality-report"
+      ],
+      "description": "Kotlin (MeasureCli): the test split once, after everything is fixed: top-1, macro F1, calibration error, out-of-set separation, and how much is accepted at what risk. Written as a report; copy its `quality` into the profile's measurements."
+    },
+    {
+      "id": "export",
+      "kind": "export",
+      "tool": "skainet",
+      "uses": [
+        "head-weights"
+      ],
+      "produces": [
+        "head-mlir"
+      ],
+      "description": "Kotlin (ExportCli): the same head definition traced with the fitted weights -> StableHLO, one function classify(rows[1, 256, 321]) -> logits[1, classes], weights folded."
+    },
+    {
+      "id": "compile",
+      "kind": "compile",
+      "tool": "iree-tools",
+      "uses": [
+        "head-mlir"
+      ],
+      "produces": [
+        "head-vmfb"
+      ],
+      "per_target": true,
+      "description": "StableHLO -> .vmfb for the target."
+    },
+    {
+      "id": "build-runtime",
+      "kind": "build-runtime",
+      "tool": "iree-android-runtime",
+      "produces": [
+        "runtime-so"
+      ],
+      "per_target": true,
+      "description": "libskainet_iree_module.so for the target ABI, taken from the released SKaiNET-transformers Android runtime AAR."
+    },
+    {
+      "id": "pack",
+      "kind": "pack",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "runtime-so",
+        "head-vmfb",
+        "head-weights",
+        "calibration-json",
+        "label-set-json"
+      ],
+      "produces": [
+        "pack-dir"
+      ],
+      "description": "descriptor.json + manifest.json + artifacts/<role>/... (cartridge spec pack_dir)."
+    },
+    {
+      "id": "sign",
+      "kind": "sign",
+      "tool": "blueprint-plugin",
+      "uses": [
+        "pack-dir"
+      ],
+      "produces": [
+        "manifest"
+      ],
+      "description": "Ed25519 over the canonical manifest, key from the profile."
+    }
+  ],
+  "outputs": [
+    {
+      "from": "runtime-so",
+      "role": "runtime",
+      "path": "artifacts/runtime/libskainet_iree_module.so",
+      "derived_from": []
+    },
+    {
+      "from": "head-vmfb",
+      "role": "model",
+      "path": "artifacts/model/head.vmfb",
+      "derived_from": [
+        "encoder-de",
+        "dataset",
+        "label-set"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "head-weights",
+      "role": "weights",
+      "path": "artifacts/weights/head.safetensors",
+      "derived_from": [
+        "encoder-de",
+        "dataset",
+        "label-set"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "calibration-json",
+      "role": "calibration",
+      "path": "artifacts/calibration/calibration.json",
+      "derived_from": [
+        "encoder-de",
+        "dataset",
+        "label-set"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "label-set-json",
+      "role": "other",
+      "path": "artifacts/other/label-set.json",
+      "derived_from": [
+        "label-set"
+      ],
+      "flavor": "de"
+    },
+    {
+      "from": "head-vmfb",
+      "role": "model",
+      "path": "artifacts/model/head.vmfb",
+      "derived_from": [
+        "encoder-en",
+        "dataset",
+        "label-set"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "head-weights",
+      "role": "weights",
+      "path": "artifacts/weights/head.safetensors",
+      "derived_from": [
+        "encoder-en",
+        "dataset",
+        "label-set"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "calibration-json",
+      "role": "calibration",
+      "path": "artifacts/calibration/calibration.json",
+      "derived_from": [
+        "encoder-en",
+        "dataset",
+        "label-set"
+      ],
+      "flavor": "en"
+    },
+    {
+      "from": "label-set-json",
+      "role": "other",
+      "path": "artifacts/other/label-set.json",
+      "derived_from": [
+        "label-set"
+      ],
+      "flavor": "en"
+    }
+  ],
+  "verification": [
+    {
+      "id": "test-top1",
+      "kind": "task-metric",
+      "tolerance": 0.02,
+      "on_device": false,
+      "description": "ADR-018: trained weights are not byte-reproducible. A re-materialization from the same blueprint, profile, inputs and seed reaches the test top-1 of the measure step's report within the tolerance (absolute)."
+    },
+    {
+      "id": "host-parity",
+      "kind": "parity",
+      "tolerance": 0.001,
+      "on_device": false,
+      "description": "The compiled module's logits vs the eager SKaiNET forward of the same weights on test rows (parityHost task): maximum absolute difference within the tolerance, same top class."
+    }
+  ]
+}

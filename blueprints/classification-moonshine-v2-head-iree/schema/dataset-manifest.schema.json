@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dataset manifest",
+  "description": "Labeled recordings for training, calibrating and measuring a classification head. Audio paths are relative to this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "entries"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "What to call this data in reports."
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "audio",
+          "label",
+          "split"
+        ],
+        "properties": {
+          "audio": {
+            "type": "string",
+            "description": "A WAV file: 16 kHz, mono, 16-bit PCM or 32-bit float."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "split": {
+            "enum": [
+              "train",
+              "dev",
+              "test"
+            ],
+            "description": "train fits the head, dev picks the epoch and the calibration, test is measured once."
+          },
+          "speaker": {
+            "type": "string",
+            "description": "Optional. Keep a speaker in one split."
+          }
+        }
+      }
+    }
+  }
+}
