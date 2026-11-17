@@ -21,7 +21,7 @@ cartridges follow the `classification/v1` task profile (ADR-019).
 |---|---|
 | Recipe | [`blueprint.json`](blueprint.json) |
 | Encoder (frozen) | `moonshine-ai/moonshine-streaming-tiny-de` @ `928bfb92…` (flavor `de`) or `moonshine-ai/moonshine-streaming-tiny` @ `f8e9dfd8…` (flavor `en`), pinned by SHA-256, MIT |
-| Head | Masked attention pooling, one hidden layer of 256, logits. About 170 000 parameters, a 0.4 MB module |
+| Head | Eight masked attention poolings side by side as a hidden layer of 256, then logits. About 90 000 parameters, a 0.4 MB module |
 | Your inputs | `label-set` and `dataset` (see *Three files*). The dataset's license enters the cartridge's effective license |
 | Code license | MIT |
 | Kotlin API | Kotlin Multiplatform (`jvm` today): the head, the pack locator and the decision are common code |
@@ -86,22 +86,22 @@ A custom module does the pooling; the rest is the layer DSL:
 
 ```kotlin
 override fun onForward(input: Tensor<FP32, Float>, ctx: ExecutionContext): Tensor<FP32, Float> {
-    val (batch, rows) = input.shape.dimensions
-    val mask = input.narrow(dim = 2, start = dim, length = 1)                       // [b, t, 1]
-    val scores = score.forward(input, ctx) + (mask - 1f) * MASKED                   // [b, t, 1]
-    val weights = scores.reshape(Shape(batch, rows)).softmax(dim = 1)               // over the rows
-    …
+    val (batch, count) = input.shape.dimensions
+    val flat = input.reshape(Shape(batch * count, width))
+    val padded = (flat.narrow(dim = 1, start = dim, length = 1) - 1f) * MASKED       // −1e9 on padded rows
+    val scores = score.forward(flat, ctx) + ctx.ops.matmul(padded, ones)             // [b·t, heads]
+    val weights = …softmax(dim = 1)…                                                 // per head, over the rows
+    val weighted = rows.forward(flat, ctx) * ctx.ops.matmul(weights, owner)          // each head weighs its own features
+    return weighted.reshape(Shape(batch, count, features)).sum(dim = 1).relu()
 }
 
 MLP(
-    MaskedAttentionPool(config.dim, ctx, random),
-    sequential<FP32, Float>(ctx) {
-        input(config.dim)
-        dense(config.hidden, id = "hidden") { weights { randn(std = 0.05f, random = random) }; bias { zeros() } }
-        activation { it.relu() }
-    },
+    MaskedAttentionPool(config.dim, config.heads, config.hidden / config.heads, ctx, random),
     Dropout(p = config.dropout, name = "dropout", random = random),
-    sequential<FP32, Float>(ctx) { input(config.hidden); dense(config.classes, id = "logits") { … } },
+    sequential<FP32, Float>(ctx) {
+        input(config.hidden)
+        dense(config.classes, id = "logits") { weights { randn(std = 0.05f, random = random) }; bias { zeros() } }
+    },
 )
 ```
 
@@ -145,7 +145,7 @@ are `derived_from` the dataset, and since trained weights are not byte-reproduci
 `verification` states a metric tolerance instead.
 
 `features` is the slow step: about 20 times real time on a 12-core desktop with `-PfeatureWorkers=6`, so ten
-hours of audio take about half an hour. Training takes minutes to about half an hour.
+hours of audio take about half an hour. Training takes minutes to about three quarters of an hour.
 
 ## What the cartridge is
 
@@ -179,10 +179,10 @@ when (val outcome = pack.decision().decide(logits)) {
 }
 ```
 
-The score is the temperature-scaled energy, `−T · log Σ exp(z / T)` over the classes other than the reject class
-(lower is more confident). `thresholds.accept` is the loosest score at which, on `dev`, at most `target_risk`
-(1 %) of the accepted inputs were wrong: a wrong label, or an out-of-set input accepted. `thresholds.reject` keeps
-95 % of the in-set inputs.
+The score is one minus the top probability, `1 − max softmax(z / T)` (lower is more confident); the recipe's
+`calibrate` step can fit the temperature-scaled energy instead (`"score": "energy"`). `thresholds.accept` is the
+loosest score at which, on `dev`, at most `target_risk` (1 %) of the accepted inputs were wrong: a wrong label,
+or an out-of-set input accepted. `thresholds.reject` keeps 95 % of the in-set inputs.
 
 ## Verification
 
@@ -191,7 +191,7 @@ The score is the temperature-scaled energy, `−T · log Σ exp(z / T)` over the
   metrics and the feature cache; and the blueprint's own rules (no data or weights in the tree, declared data and
   seed on the fitted steps, trained outputs derived from the dataset).
 - `parityHost -Pprofile=…` compiles the head for the host and compares `iree-run-module` with the eager head on
-  test rows. Measured: 8 test inputs, maximum absolute difference 8.6e-6, same top class on all.
+  test rows. Measured: 8 test inputs, maximum absolute difference 3.8e-6.
 - `test-top1` (`blueprint.json`): a re-materialization from the same inputs and seed reaches the reported test
   top-1 within 0.02.
 
@@ -220,21 +220,29 @@ With the example label set (18 classes plus `other`, three classes held out), fl
 | | |
 |---|---|
 | Data | 8 676 train, 1 512 dev, 2 033 test recordings (after holding three classes out of train and dev) |
-| Test top-1 (19 classes) | **0.794** |
-| Macro F1 | 0.700 |
-| Calibration error (ECE) | 0.032 |
-| In-set vs out-of-set, AUROC | 0.838 (0.822 against the three classes never heard) |
-| Out-of-set passing at 95 % in-set kept | 0.767 |
-| Accepted | 44 of 846 in-set inputs (5.2 %), 3 of 1 187 out-of-set inputs |
-| Wrong among accepted | 4 of 47 (8.5 %), against a target of 1 % set on dev |
-| Rejected | 1 006 of 1 187 out-of-set inputs, 148 of 846 in-set inputs |
-| Time | features 39 min (10 workers, 23 times real time), training 16 epochs in about half an hour |
+| Test top-1 (19 classes) | **0.845** |
+| Macro F1 | 0.772 |
+| Calibration error (ECE) | 0.024 |
+| In-set vs out-of-set, AUROC | 0.913 (0.894 against the three classes never heard) |
+| Accepted, at the recipe's 1 % target | 53 of 846 in-set inputs (6.3 %), 1 of 1 187 out-of-set inputs; 1 of the 54 was wrong (1.9 %) |
+| Rejected | 1 051 of 1 187 out-of-set inputs, 114 of 846 in-set inputs |
+| Time | features 36 min (10 workers), training 23 epochs in about three quarters of an hour |
 
-Read these plainly. The classifier is decent for a head this small on a frozen recognizer encoder. The
-separation of in-set from out-of-set by the energy score is weak: at a 1 % risk the head accepts only one input
-in twenty, and on the test split the accepted ones were wrong more often than the dev-set target. The thresholds
-do what they are meant to (little is accepted when the score cannot be trusted), and better separation is where
-work on the head and on the out-of-set data should go.
+How much is accepted depends on the risk you allow. The report's `risk_coverage` gives the trade, each threshold
+fitted on `dev` and applied to `test`:
+
+| Target risk (dev) | In-set inputs accepted | Wrong among accepted (test) |
+|---|---|---|
+| 1 % | 6.3 % | 1.9 % |
+| 2 % | 13.0 % | 0.9 % |
+| 5 % | 51.5 % | 6.4 % |
+| 10 % | 64.7 % | 10.2 % |
+
+Read these plainly. The classifier is decent for a head this small on a frozen recognizer encoder, on a hard
+set: 18 everyday classes against everything else people say to an assistant. At a 1 % risk it acts on one input
+in sixteen; at 5 % on half of them. The thresholds come from 1 512 dev recordings, so the risk met on test
+wanders around the target, most at the strict end where few inputs decide it. A closed set of short, distinct
+phrases and more dev data per class both move these numbers; the recipe's `target_risk` is yours to set.
 
 These are what the authors measured on the host, as an expectation. Your cartridge reports your own numbers.
 

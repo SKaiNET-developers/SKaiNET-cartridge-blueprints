@@ -38,7 +38,7 @@ internal data class TrainReport(
  * fitted with the SKaiNET training DSL on the `train` split; the epoch with the best `dev` top-1 is kept.
  *
  *   --features <dir> --label-set <label-set.json> --out <dir> --seed <n>
- *   [--hidden 256] [--dropout 0.1] [--learning-rate 0.001] [--batch 64] [--max-epochs 40] [--patience 6] [--max-rows 256]
+ *   [--hidden 256] [--heads 8] [--dropout 0.3] [--learning-rate 0.001] [--batch 64] [--max-epochs 40] [--patience 6] [--max-rows 256]
  *
  * Everything random comes from `--seed`: the initial weights, dropout, and the order of the examples.
  * Writes `head.safetensors`, `label-set.json` (the pack's label set) and `train-report.json`.
@@ -64,7 +64,7 @@ public fun main(args: Array<String>) {
 
     val config = ClassificationHeadConfig(
         classes = labels.labels.size, dim = header.dim, maxRows = a.int("max-rows", header.maxRows),
-        hidden = a.int("hidden", 256), dropout = a.float("dropout", 0.1f),
+        hidden = a.int("hidden", 256), dropout = a.float("dropout", 0.3f), heads = a.int("heads", 8),
     )
     val random = Random(seed)
     val cpu = DirectCpuExecutionContext()

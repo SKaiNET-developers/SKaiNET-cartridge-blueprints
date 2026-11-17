@@ -3,7 +3,7 @@
   "kind": "materialization-profile",
   "blueprint": {
     "id": "classification-moonshine-v2-head-iree",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "target": "vulkan-armv7",
   "flavors": [

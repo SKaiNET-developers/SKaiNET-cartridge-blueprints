@@ -19,7 +19,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ClassificationHeadTest {
-    private val config = ClassificationHeadConfig(classes = 4, dim = 16, maxRows = 12, hidden = 24, dropout = 0.1f)
+    private val config = ClassificationHeadConfig(classes = 4, dim = 16, maxRows = 12, hidden = 24, dropout = 0.1f, heads = 3)
 
     /** [n] examples: class c adds direction c to every valid row; padded rows hold large noise and a zero mask. */
     private fun batch(n: Int, rng: Random): Pair<FloatArray, IntArray> {

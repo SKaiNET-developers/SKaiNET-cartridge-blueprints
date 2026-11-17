@@ -162,6 +162,7 @@ val train = tool("train", "recipe.TrainCliKt") {
             "--out", trainDir.get().asFile.absolutePath,
             "--seed", param("train", "seed"),
             "--hidden", param("train", "hidden"),
+            "--heads", param("train", "heads"),
             "--dropout", param("train", "dropout"),
             "--learning-rate", param("train", "learning_rate"),
             "--batch", param("train", "batch"),
