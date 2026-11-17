@@ -2,7 +2,7 @@
   "spec_version": "0.4",
   "kind": "blueprint",
   "id": "classification-moonshine-v2-head-iree",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "description": "A classification head on the rows of a frozen Moonshine v2 streaming encoder: trained on your label set and your recordings, calibrated to accept, defer or refuse, compiled with IREE for Vulkan or CPU. The head is one SKaiNET-DSL definition that is trained, run and exported; the weights it ships are the ones this recipe fits.",
   "descriptor_template": {
@@ -323,7 +323,8 @@
       "params": {
         "seed": 20261113,
         "hidden": 256,
-        "dropout": 0.1,
+        "heads": 8,
+        "dropout": 0.3,
         "learning_rate": 0.001,
         "batch": 64,
         "max_epochs": 40,
@@ -346,7 +347,7 @@
       ],
       "params": {
         "seed": 20261113,
-        "score": "energy",
+        "score": "max_softmax",
         "target_risk": 0.01,
         "reject_keep": 0.95
       },
