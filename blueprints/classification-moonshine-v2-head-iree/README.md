@@ -14,8 +14,8 @@ cartridges follow the `classification/v1` task profile (ADR-019).
 
 > **Status.** Every step runs on the host and is tested. A cartridge was materialized end to end from the German
 > example below; the compiled module matches the eager head on test rows (see *Verification*). It has not been run
-> on a device yet, and there is no Android binding in this module yet: a host feeds the pack's module through
-> SKaiNET-transformers' `IreeModuleRunner` itself.
+> on a device yet. The Android binding (`ClassificationHeadCartridge`) compiles and its host-side logic is tested;
+> its first run on a device is still to come.
 
 | | |
 |---|---|
@@ -24,7 +24,7 @@ cartridges follow the `classification/v1` task profile (ADR-019).
 | Head | Masked attention pooling, one hidden layer of 256, logits. About 170 000 parameters, a 0.4 MB module |
 | Your inputs | `label-set` and `dataset` (see *Three files*). The dataset's license enters the cartridge's effective license |
 | Code license | MIT |
-| Kotlin API | Kotlin Multiplatform (`jvm` today): the head, the pack locator and the decision are common code |
+| Kotlin API | Kotlin Multiplatform (`jvm`, `android`): the head, the pack locator, the classifier and the decision are common code; the Android binding runs the compiled module |
 | Targets | `vulkan-armv7`, `cpu-armv7`, `vulkan-arm64`, `cpu-arm64` (Android) |
 | Toolchain | SKaiNET 0.63.0, SKaiNET-transformers 0.64.2, IREE tools 3.11.0 (all from Maven Central, plus the IREE tools image) |
 
@@ -178,6 +178,16 @@ when (val outcome = pack.decision().decide(logits)) {
     is Outcome.Rejected  -> refuse()                  // above thresholds.reject, or the reject class won
 }
 ```
+
+On Android the binding does the call for you, on the generic IREE module runner:
+
+```kotlin
+ClassificationHeadCartridge.open(pack).use { classifier ->
+    val outcome = classifier.classify(rows, count)    // rows: [count, 320] from the encoder you already run
+}
+```
+
+`Classifier(pack, runner)` is common code: another platform supplies a `HeadRunner` for the same function.
 
 The score is the temperature-scaled energy, `−T · log Σ exp(z / T)` over the classes other than the reject class
 (lower is more confident). `thresholds.accept` is the loosest score at which, on `dev`, at most `target_risk`

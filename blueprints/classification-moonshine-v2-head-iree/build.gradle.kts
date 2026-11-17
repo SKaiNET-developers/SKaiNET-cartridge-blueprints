@@ -13,6 +13,7 @@ import java.nio.file.Files
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.kotlinSerialization)
     id("sk.ainet.cartridge.blueprint")
 }
@@ -32,6 +33,13 @@ val duckdbVersion = "2.0.0.1"
 kotlin {
     explicitApi()
 
+    // The device binding (src/androidMain): the pack's module on the generic IREE module runner.
+    android {
+        namespace = "sk.ainet.cartridge.classification.moonshine.head"
+        compileSdk = libs.versions.androidCompileSdk.get().toInt()
+        minSdk = libs.versions.androidMinSdk.get().toInt()
+        compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
+    }
     // SKaiNET inlines from JVM 21 bytecode.
     jvm {
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21) }
@@ -67,6 +75,9 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
             api(libs.kotlinx.io.core)
             api("sk.ainet.core:skainet-lang-core:$skainetVersion")
+        }
+        androidMain.dependencies {
+            api("sk.ainet.transformers:skainet-transformers-runtime-iree-android:$moduleRuntimeVersion")  // IreeModuleRunner
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
