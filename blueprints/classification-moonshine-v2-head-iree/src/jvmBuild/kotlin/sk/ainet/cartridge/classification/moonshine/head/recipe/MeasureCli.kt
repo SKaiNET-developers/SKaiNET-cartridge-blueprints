@@ -2,7 +2,9 @@ package sk.ainet.cartridge.classification.moonshine.head.recipe
 
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import sk.ainet.cartridge.classification.moonshine.head.Calibration
 import sk.ainet.cartridge.classification.moonshine.head.Decision
@@ -32,7 +34,9 @@ public fun main(args: Array<String>) {
     val known = test.indices.filter { test[it].target >= 0 }
     val predicted = IntArray(known.size) { Decision.argmax(logits[known[it]]) }
     val targets = IntArray(known.size) { test[known[it]].target }
-    val scores = FloatArray(test.size) { decision.score(logits[it]) }
+    // The score as the decision uses it: an input whose top class is the reject class is refused whatever its
+    // score, so it ranks last.
+    val scores = FloatArray(test.size) { if (Decision.argmax(logits[it]) == reject) Float.POSITIVE_INFINITY else decision.score(logits[it]) }
     fun inSet(i: Int) = test[i].target >= 0 && test[i].target != reject
     val inScores = test.indices.filter(::inSet).map { scores[it] }.toFloatArray()
     val outScores = test.indices.filter { !inSet(it) }.map { scores[it] }.toFloatArray()
@@ -77,12 +81,37 @@ public fun main(args: Array<String>) {
             }
             put("accepted_wrong", wrong)
         }
+        putJsonArray("risk_coverage") {
+            // What other target risks would have given: each threshold fitted on dev, as `calibrate` fits it,
+            // then applied to test.
+            val dev = FeatureStore(a.file("features")).examples("dev", labels)
+            val devLogits = EagerHead.of(a.file("weights")).logits(dev)
+            val devTop = IntArray(dev.size) { Decision.argmax(devLogits[it]) }
+            val devScores = FloatArray(dev.size) { decision.score(devLogits[it]) }
+            val top = IntArray(test.size) { Decision.argmax(logits[it]) }
+            for (target in listOf(0.01f, 0.02f, 0.05f, 0.1f)) {
+                val threshold = Metrics.acceptThreshold(
+                    devScores,
+                    acceptable = BooleanArray(dev.size) { devTop[it] != reject },
+                    correct = BooleanArray(dev.size) { devTop[it] == dev[it].target },
+                    targetRisk = target,
+                )
+                val taken = test.indices.filter { top[it] != reject && scores[it] <= threshold }
+                addJsonObject {
+                    put("target_risk", target)
+                    put("accepted", taken.size)
+                    number("coverage", share(taken.count(::inSet), inScores.size))
+                    number("risk", share(taken.count { top[it] != test[it].target }, taken.size))
+                }
+            }
+        }
         putJsonObject("definitions") {
             put("top1", "share of test recordings whose top class is their class; a recording outside the label set belongs to the reject class when the set has one, and is left out otherwise")
-            put("auroc", "in-set vs out-of-set by the calibration's score; out-of-set = reject-class and held-out recordings")
+            put("auroc", "in-set vs out-of-set by the calibration's score, an input whose top class is the reject class ranking last; out-of-set = reject-class and held-out recordings")
             put("auroc_unseen", "the same against held-out classes only: classes the head never trained on")
             put("coverage", "share of in-set recordings that are accepted")
             put("risk", "share of accepted recordings that are wrong: a wrong label, or an out-of-set recording accepted")
+            put("risk_coverage", "coverage and risk on test for other target risks, each threshold fitted on dev")
         }
     }
     a.file("out").apply { absoluteFile.parentFile.mkdirs() }.writeText(json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), report) + "\n")

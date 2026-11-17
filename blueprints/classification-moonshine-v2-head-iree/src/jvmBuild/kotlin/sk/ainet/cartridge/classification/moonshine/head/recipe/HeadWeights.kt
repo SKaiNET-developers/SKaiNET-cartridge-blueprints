@@ -41,6 +41,7 @@ internal class HeadWeights(val tensors: Map<String, Pair<IntArray, FloatArray>>,
                 metadata("dim", config.dim.toString())
                 metadata("max_rows", config.maxRows.toString())
                 metadata("hidden", config.hidden.toString())
+                metadata("heads", config.heads.toString())
                 for ((k, v) in metadata) metadata(k, v)
                 for ((name, t) in tensors.toSortedMap()) tensorF32(name, t.first, t.second)
             }
@@ -65,7 +66,7 @@ internal class HeadWeights(val tensors: Map<String, Pair<IntArray, FloatArray>>,
         fun config(file: File, dropout: Float = 0f): ClassificationHeadConfig {
             val m = read(file).metadata
             fun int(key: String) = m[key]?.toInt() ?: error("${file.name}: no '$key' in the metadata")
-            return ClassificationHeadConfig(classes = int("classes"), dim = int("dim"), maxRows = int("max_rows"), hidden = int("hidden"), dropout = dropout)
+            return ClassificationHeadConfig(classes = int("classes"), dim = int("dim"), maxRows = int("max_rows"), hidden = int("hidden"), heads = int("heads"), dropout = dropout)
         }
 
         private fun floats(data: sk.ainet.lang.tensor.data.TensorData<*, *>): FloatArray {
