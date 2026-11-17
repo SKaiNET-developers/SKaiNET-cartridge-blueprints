@@ -50,6 +50,29 @@ class PackDirTest {
     }
 
     @Test
+    fun `a classifier feeds the padded input to the module and decides on its logits`() {
+        val pack = PackDir(pack().path)
+        var seen: FloatArray? = null
+        var closed = false
+        val runner = object : HeadRunner {
+            override fun run(input: FloatArray): FloatArray { seen = input; return floatArrayOf(10f, 0f, 0f) }
+            override fun close() { closed = true }
+        }
+        Classifier(pack, runner).use { classifier ->
+            val outcome = classifier.classify(floatArrayOf(1f, 2f, 3f, 4f), count = 2)
+            assertEquals("a", (outcome as Outcome.Accepted).label)
+            assertEquals(listOf(1f, 2f, 1f, 3f, 4f, 1f, 0f, 0f, 0f), seen!!.toList())
+            assertFailsWith<IllegalArgumentException> { classifier.logits(FloatArray(0), count = 0) }
+        }
+        assertTrue(closed)
+        val short = object : HeadRunner {
+            override fun run(input: FloatArray): FloatArray = floatArrayOf(1f)
+            override fun close() {}
+        }
+        assertFailsWith<IllegalStateException> { Classifier(pack, short).logits(floatArrayOf(1f, 2f), count = 1) }
+    }
+
+    @Test
     fun `a directory without a descriptor is not a pack, and a missing artifact is named`() {
         assertFailsWith<IllegalArgumentException> { PackDir(Files.createTempDirectory("empty").toString()) }
         val error = assertFailsWith<IllegalArgumentException> { PackDir(pack().path).module }
